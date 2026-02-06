@@ -39,9 +39,9 @@ class FeedForward(nn.Module):
         )
 
     def forward(self, x):
-        out = self.seq(x)
+        out = self.layer_norm(x)
+        out = self.seq(out)
         out = torch.add(x, out)
-        out = self.layer_norm(out)
         return out
 
 
@@ -52,9 +52,9 @@ class SelfAttentionBlock(nn.Module):
         self.layer_norm = nn.LayerNorm(embed_dim)
 
     def forward(self, x, key_padding_mask=None):
-        out, _ = self.self_attention(x, x, x, key_padding_mask=key_padding_mask)
+        out = self.layer_norm(x)
+        out, _ = self.self_attention(out, out, out, key_padding_mask=key_padding_mask)
         out = torch.add(x, out)
-        out = self.layer_norm(out)
         return out
 
 
@@ -65,11 +65,11 @@ class CrossAttentionBlock(nn.Module):
         self.layer_norm = nn.LayerNorm(embed_dim)
 
     def forward(self, x, context, key_padding_mask=None):
+        out = self.layer_norm(x)
         out, _ = self.cross_attention(
-            x, context, context, key_padding_mask=key_padding_mask
+            out, context, context, key_padding_mask=key_padding_mask
         )
         out = torch.add(x, out)
-        out = self.layer_norm(out)
         return out
 
 
@@ -86,11 +86,11 @@ class CausalAttentionBlock(nn.Module):
         attn_mask = torch.nn.Transformer.generate_square_subsequent_mask(
             seq_len, dtype=x.dtype, device=x.device
         )
+        out = self.layer_norm(x)
         out, _ = self.causal_attention(
-            x, x, x, attn_mask=attn_mask, key_padding_mask=key_padding_mask
+            out, out, out, attn_mask=attn_mask, key_padding_mask=key_padding_mask
         )
         out = torch.add(x, out)
-        out = self.layer_norm(out)
         return out
 
 
@@ -126,6 +126,7 @@ class Decoder(nn.Module):
             [DecoderBlock(embed_dim, heads, intermediate) for _ in range(num_layers)]
         )
         self.dropout = nn.Dropout(0.1)
+        self.layer_norm = nn.LayerNorm(embed_dim)
         self.eos_token = None
         self.sos_token = None
         self.sep_token = None
@@ -142,6 +143,7 @@ class Decoder(nn.Module):
         out = self.dropout(out)
         for decoder_block in self.decoder_blocks:
             out = decoder_block(out, key_padding_mask=key_padding_mask)
+        out = self.layer_norm(out)
         return out
 
 

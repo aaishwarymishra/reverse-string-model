@@ -51,7 +51,8 @@ def parse_args():
     )
     parser.add_argument(
         "--scheduler",
-        action="store_true",
+        type=bool,
+        default=True,
         help="Whether to use a learning rate scheduler.",
     )
     parser.add_argument(

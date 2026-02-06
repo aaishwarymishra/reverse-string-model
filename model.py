@@ -82,8 +82,12 @@ class CausalAttentionBlock(nn.Module):
         self.layer_norm = nn.LayerNorm(embed_dim)
 
     def forward(self, x, key_padding_mask=None):
+        seq_len = x.shape[1]
+        attn_mask = torch.nn.Transformer.generate_square_subsequent_mask(
+            seq_len, dtype=x.dtype, device=x.device
+        )
         out, _ = self.causal_attention(
-            x, x, x, is_causal=True, key_padding_mask=key_padding_mask
+            x, x, x, attn_mask=attn_mask, key_padding_mask=key_padding_mask
         )
         out = torch.add(x, out)
         out = self.layer_norm(out)

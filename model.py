@@ -8,8 +8,6 @@ class PositionalEncoding(nn.Module):
         super().__init__()
         if embed_dim % 2 != 0:
             raise ValueError("embed_dim must be even")
-        if max_len % 2 != 0:
-            raise ValueError("max_len must be greater than 0")
         if max_len <= 0:
             raise ValueError("max_len must be greater than 0")
         self.embed_dim = embed_dim
@@ -84,9 +82,8 @@ class CausalAttentionBlock(nn.Module):
         self.layer_norm = nn.LayerNorm(embed_dim)
 
     def forward(self, x, key_padding_mask=None):
-        mask = torch.triu(torch.ones(x.shape[-2], x.shape[-2]), diagonal=1).bool()
         out, _ = self.causal_attention(
-            x, x, x, attn_mask=mask.to(x.device), key_padding_mask=key_padding_mask
+            x, x, x, is_causal=True, key_padding_mask=key_padding_mask
         )
         out = torch.add(x, out)
         out = self.layer_norm(out)
@@ -161,8 +158,8 @@ class ReverseStringModel(nn.Module):
         self.linear = nn.Linear(embed_dim, vocab_size)
         self.pad_idx = pad_idx
 
-
-    def forward(self, x, key_padding_mask=None):
+    def forward(self, x):
+        key_padding_mask = x == self.pad_idx if self.pad_idx is not None else None
         out = self.decoder(x, key_padding_mask=key_padding_mask)
         out = self.linear(out)
         return out

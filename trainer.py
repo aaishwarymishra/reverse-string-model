@@ -18,11 +18,7 @@ def create_trainer(
     def train(engine, batch):
         model.train()
         x, y = batch[0].to(device), batch[1].to(device)
-        if model.pad_idx is not None:
-            key_padding_mask = x == model.pad_idx
-        else:
-            key_padding_mask = None
-        preds = model(x, key_padding_mask=key_padding_mask)
+        preds = model(x)
         loss = loss_fn(preds, y)
         loss.backward()
         optimizer.step()
@@ -35,11 +31,7 @@ def create_trainer(
         model.eval()
         with torch.no_grad():
             x, y = batch[0].to(device), batch[1].to(device)
-            if model.pad_idx is not None:
-                key_padding_mask = x == model.pad_idx
-            else:
-                key_padding_mask = None
-            y_preds = model(x, key_padding_mask=key_padding_mask)
+            y_preds = model(x)
         return y_preds, y
 
     def accuracy_transform(output):

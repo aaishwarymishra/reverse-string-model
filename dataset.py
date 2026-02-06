@@ -56,10 +56,17 @@ class ReverseStringDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-    def encode(self, s):
+    def simple_encode(self, s):
         encoded_s = []
         for c in s:
             encoded_s.append(self.char_to_idx[c])
+        return encoded_s
+
+    def encode(self, s):
+        encoded_s = [self.char_to_idx["<SOS>"]]
+        for c in s:
+            encoded_s.append(self.char_to_idx[c])
+        encoded_s.append(self.char_to_idx["<SEP>"])
         return encoded_s
 
     def decode(self, encoded_s):

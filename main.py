@@ -130,7 +130,8 @@ def main():
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     if config.scheduler:
-        scheduler = get_scheduler(optimizer, config.num_epochs * len(train_loader))
+        total_steps = config.num_epochs * len(train_loader)
+        scheduler = get_scheduler(optimizer, total_steps*0.1, total_steps)
     else:
         scheduler = None
     trainer = create_trainer(

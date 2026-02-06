@@ -121,18 +121,18 @@ def main():
         intermediate=config.intermediate,
         heads=config.heads,
         vocab_size=len(train_dataset.char_to_idx),
-        pad_idx=train_dataset.char_to_idx.get("<pad>"),
+        pad_idx=train_dataset.char_to_idx.get("<PAD>"),
     ).to(config.device)
 
     criterion = (
-        nn.CrossEntropyLoss(ignore_index=train_dataset.char_to_idx.get("<pad>"))
-        if train_dataset.char_to_idx.get("<pad>") is not None
+        nn.CrossEntropyLoss(ignore_index=train_dataset.char_to_idx.get("<PAD>"))
+        if train_dataset.char_to_idx.get("<PAD>") is not None
         else nn.CrossEntropyLoss()
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     if config.scheduler:
         total_steps = config.num_epochs * len(train_loader)
-        scheduler = get_scheduler(optimizer, total_steps*0.1, total_steps)
+        scheduler = get_scheduler(optimizer, total_steps * 0.1, total_steps)
     else:
         scheduler = None
     trainer = create_trainer(

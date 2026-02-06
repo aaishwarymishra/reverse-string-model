@@ -40,7 +40,7 @@ class ReverseStringDataset(Dataset):
 
     def __getitem__(self, index):
         s = self.data[index]
-        encoded_s = self.encode(s)
+        encoded_s = self.simple_encode(s)
         final = (
             [self.sos_idx]
             + encoded_s

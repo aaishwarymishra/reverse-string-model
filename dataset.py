@@ -41,14 +41,16 @@ class ReverseStringDataset(Dataset):
     def __getitem__(self, index):
         s = self.data[index]
         encoded_s = self.simple_encode(s)
-        final = (
-            [self.sos_idx]
-            + encoded_s
-            + [self.sep_idx]
-            + encoded_s[::-1]
-            + [self.eos_idx]
-        )
-        return torch.tensor(final[:-1]), torch.tensor(final[1:])
+
+        context = [self.sos_idx] + encoded_s + [self.sep_idx]
+
+        reversed_s = encoded_s[::-1] + [self.eos_idx]
+
+        x = context + reversed_s[:-1]
+
+        y = [self.pad_idx] * (len(context) - 1) + reversed_s
+
+        return torch.tensor(x), torch.tensor(y)
 
     def get(self, index):
         return self.data[index]

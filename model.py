@@ -127,9 +127,9 @@ class Decoder(nn.Module):
         )
         self.dropout = nn.Dropout(0.1)
         self.layer_norm = nn.LayerNorm(embed_dim)
-        self.eos_token = None
-        self.sos_token = None
-        self.sep_token = None
+        self.eos_idx = None
+        self.sos_idx = None
+        self.sep_idx = None
 
     def forward(self, x, key_padding_mask=None):
         out = self.layer_embedding(x)
@@ -176,15 +176,11 @@ class ReverseStringModel(nn.Module):
     def reverse(
         self, x, max_length=100, eos_token=None, sos_token=None, sep_token=None
     ):
-        if self.eos_token is None:
-            self.eos_token = eos_token
-        if self.sos_token is None:
-            self.sos_token = sos_token
-        if self.sep_token is None:
-            self.sep_token = sep_token
+        # Set model to evaluation mode - CRITICAL FIX for proper inference
+        self.eval()
 
-        if self.eos_token is None or self.sos_token is None or self.sep_token is None:
-            raise ValueError("eos_token, sos_token, and sep_token must be provided")
+        if eos_token is None:
+            raise ValueError("eos_token must be provided")
 
         if x.ndim < 2:
             raise ValueError("Input must be a 2D tensor")
@@ -192,13 +188,21 @@ class ReverseStringModel(nn.Module):
         batch_size = x.shape[0]
         completed = torch.zeros(batch_size, dtype=torch.bool, device=x.device)
 
-        for _ in range(max_length):
-            if completed.all():
-                break
-            out = self.decoder(x)
-            out = self.linear(out[:, -1, :])
-            next_token = torch.argmax(out, dim=-1)
-            next_token[completed] = self.pad_idx if self.pad_idx is not None else 0
-            x = torch.cat((x, next_token.unsqueeze(1)), dim=1)
-            completed = completed | (next_token == self.eos_token)
-        return x
+        generated = []
+
+        with torch.no_grad():
+            for _ in range(max_length):
+                if completed.all():
+                    break
+                out = self.decoder(x)
+                out = self.linear(out[:, -1, :])
+                next_token = torch.argmax(out, dim=-1)
+                next_token[completed] = self.pad_idx if self.pad_idx is not None else 0
+                x = torch.cat((x, next_token.unsqueeze(1)), dim=1)
+                generated.append(next_token.unsqueeze(1))
+                completed = completed | (next_token == eos_token)
+
+        if generated:
+            return torch.cat(generated, dim=1)
+        else:
+            return torch.zeros((batch_size, 0), dtype=torch.long, device=x.device)

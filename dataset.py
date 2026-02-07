@@ -58,24 +58,41 @@ class ReverseStringDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
+    # encoding without special tokens, used for testing and debugging
     def simple_encode(self, s):
         encoded_s = []
         for c in s:
-            encoded_s.append(self.char_to_idx[c])
+            if c in self.char_to_idx:
+                encoded_s.append(self.char_to_idx[c])
+            else:
+                raise ValueError(f"Character '{c}' not in vocabulary")
         return encoded_s
 
+    # encoding with special tokens, used for training
     def encode(self, s):
-        encoded_s = [self.char_to_idx["<SOS>"]]
+        encoded_s = [self.sos_idx]
         for c in s:
-            encoded_s.append(self.char_to_idx[c])
-        encoded_s.append(self.char_to_idx["<SEP>"])
+            if c in self.char_to_idx:
+                encoded_s.append(self.char_to_idx[c])
+            else:
+                raise ValueError(f"Character '{c}' not in vocabulary")
+        encoded_s.append(self.sep_idx)
         return encoded_s
 
-    def decode(self, encoded_s):
+    # decoding token indices back to a string
+    def decode(self, indices):
         s = []
-        for i in encoded_s:
-            if i.item() not in [self.pad_idx, self.sos_idx, self.eos_idx, self.sep_idx]:
-                s.append(self.idx_to_char[i.item()])
+
+        if isinstance(indices, torch.Tensor):
+            indices = indices.tolist()
+
+        for idx in indices:
+            if idx in [self.pad_idx, self.sos_idx, self.eos_idx, self.sep_idx]:
+                continue
+
+            if idx in self.idx_to_char:
+                s.append(self.idx_to_char[idx])
+
         return "".join(s)
 
 

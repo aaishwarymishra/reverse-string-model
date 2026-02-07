@@ -51,8 +51,7 @@ def parse_args():
     )
     parser.add_argument(
         "--scheduler",
-        type=bool,
-        default=True,
+        action="store_true",
         help="Whether to use a learning rate scheduler.",
     )
     parser.add_argument(
@@ -132,13 +131,15 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     if config.scheduler:
         total_steps = config.num_epochs * len(train_loader)
-        scheduler = get_scheduler(optimizer, total_steps * 0.1, total_steps)
+        warmup_steps = max(1, int(total_steps * 0.1))
+        scheduler = get_scheduler(optimizer, warmup_steps, total_steps)
     else:
         scheduler = None
-    trainer = create_trainer(
+    trainer, tb_logger = create_trainer(
         model, criterion, config.device, optimizer, scheduler, train_loader, val_loader
     )
     trainer.run(train_loader, max_epochs=config.num_epochs)
+    tb_logger.close()
 
 
 if __name__ == "__main__":

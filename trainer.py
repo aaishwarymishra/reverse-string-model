@@ -2,6 +2,8 @@ from ignite import metrics
 from ignite.engine import Engine, Events, create_supervised_evaluator
 from ignite.metrics import Accuracy, Loss
 from ignite.handlers import ModelCheckpoint, EarlyStopping
+from ignite.contrib.handlers import TensorboardLogger
+from ignite.contrib.handlers.tensorboard_logger import OptimizerParamsHandler
 from ignite.contrib.handlers import global_step_from_engine
 import torch
 
@@ -21,6 +23,7 @@ def create_trainer(
         preds = model(x)
         loss = loss_fn(preds, y)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         optimizer.zero_grad()
         if scheduler is not None:
@@ -108,10 +111,39 @@ def create_trainer(
     )
     val_evaluator.add_event_handler(Events.COMPLETED, early_stopping)
 
-    return trainer
+    tb_logger = TensorboardLogger(log_dir="./tb-logs")
+
+    tb_logger.attach_output_handler(
+        trainer,
+        event_name=Events.ITERATION_COMPLETED,
+        tag="training",
+        output_transform=lambda loss: {"batch_loss": loss},
+    )
+
+    for tag, loader, evaluator in [
+        ("training", train_loader, train_evaluator),
+        ("validation", val_loader, val_evaluator),
+    ]:
+        tb_logger.attach_output_handler(
+            evaluator,
+            event_name=Events.EPOCH_COMPLETED,
+            tag=tag,
+            metric_names=["accuracy", "loss"],
+            global_step_transform=lambda *_: trainer.state.iteration,
+        )
+
+    tb_logger.attach(
+        trainer,
+        log_handler=OptimizerParamsHandler(optimizer),
+        event_name=Events.ITERATION_STARTED,
+    )
+
+    return trainer, tb_logger
 
 
 def get_scheduler(optimizer, num_warmup_steps, num_training_steps):
+    num_warmup_steps = max(1, int(num_warmup_steps))
+    num_training_steps = max(num_warmup_steps + 1, int(num_training_steps))
     warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer, start_factor=0.1, end_factor=1.0, total_iters=num_warmup_steps
     )

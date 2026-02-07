@@ -99,28 +99,30 @@ def create_trainer(
         filename_prefix="best",
         score_function=score_function,
         score_name="accuracy",
-        global_step_transform=global_step_from_engine(trainer),
+        global_step_transform=lambda *_: trainer.state.epoch,
     )
 
     latest_checkpoint = ModelCheckpoint(
         "checkpoint",
         n_saved=1,
         filename_prefix="latest",
-        global_step_transform=global_step_from_engine(trainer),
+        global_step_transform=lambda *_: trainer.state.epoch,
     )
 
     periodic_checkpoint = ModelCheckpoint(
         "checkpoint",
         n_saved=3,
         filename_prefix="periodic",
-        global_step_transform=global_step_from_engine(trainer),
+        global_step_transform=lambda *_: trainer.state.epoch,
     )
 
     early_stopping = EarlyStopping(
-        patience=3, score_function=early_stopping_function, trainer=trainer
+        patience=3,
+        score_function=early_stopping_function,
+        trainer=trainer,
+        min_delta=0.001,
     )
 
-    # Attach checkpoint handlers
     val_evaluator.add_event_handler(
         Events.COMPLETED, model_checkpoint, {"model": model}
     )

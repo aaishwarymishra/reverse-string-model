@@ -12,7 +12,7 @@ class Config(pydantic.BaseModel):
     num_epochs: int = 10
     learning_rate: float = 1e-3
     max_length: int = 100
-    fixed_length: int = 100
+    fixed_length: int | None = None
     scheduler: bool = True
     num_layers: int = 2
     embed_dim: int = 128
@@ -46,7 +46,7 @@ def parse_args():
     parser.add_argument(
         "--fixed_length",
         type=int,
-        default=100,
+        default=None,
         help="Fixed length for input strings (if specified).",
     )
     parser.add_argument(

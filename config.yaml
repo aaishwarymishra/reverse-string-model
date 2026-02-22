@@ -1,0 +1,51 @@
+dataset:
+  size: 10000
+  val_size: 1000
+  min: 5
+  max: 100
+  fixed_length: null
+  batch_size: 64
+  train_split: 0.8
+  shuffle: true
+
+model:
+  num_layers: 2
+  embed_dim: 128
+  intermediate: 512
+  heads: 4
+
+optimizer:
+  type: Adam
+  args:
+    lr: 1.0e-3 # 1e-3
+
+scheduler:
+  type: CosineAnnealingLR
+  event: ITERATION_COMPLETED
+  args:
+    T_max: 1570 # approx 10 epochs * (10000 / 64) = 1562 steps.
+    eta_min: 1.0e-6
+
+loss:
+  type: CrossEntropyLoss
+  args:
+    ignore_index: 0 # Assuming 0 is PAD, need to confirm this index in main2.py
+
+trainer:
+  epochs: 10
+  device: cuda
+  type: create_supervised_trainer
+
+handlers:
+  - type: Checkpoint
+    event: EPOCH_COMPLETED
+    args:
+        to_save: 
+            model: model
+            optimizer: optimizer
+            scheduler: scheduler
+        save_handler: "checkpoint" 
+        filename_prefix: "best"
+        score_name: "val_accuracy"
+        global_step_transform: null 
+    targets: ["val_evaluator"] # Where to attach

@@ -152,8 +152,6 @@ def _resolve_event(event: str) -> Any:
             return event_type(every=event["every"])
         return event_type
     raise ValueError(f"Invalid event format: {event!r}")
-    
-
 
 
 def _parse_config_value(value: Any, key: str, context: Dict[str, Any] = None) -> Any:
@@ -185,6 +183,7 @@ def _parse_config_value(value: Any, key: str, context: Dict[str, Any] = None) ->
 
 def create_handlers_from_config(
     handlers_config: list[dict[str, Any]],
+    trainer: engine.Engine,
     context: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
@@ -193,6 +192,7 @@ def create_handlers_from_config(
 
     Args:
         handlers_config: List of handler configurations from YAML.
+        trainer: The main trainer engine to which handlers will be attached.
         context: Dictionary of context objects (trainer, model, optimizer, scheduler, evaluators).
 
     Returns:
@@ -202,6 +202,7 @@ def create_handlers_from_config(
         return {}
 
     handlers = {}
+    context["trainer"] = trainer  
 
     for handler_config in handlers_config:
         handler_type = handler_config.get("type", "Checkpoint")
@@ -236,7 +237,8 @@ def create_handlers_from_config(
                 event = _resolve_event(event_str)
 
                 # Extract to_save from handler_args or reconstruct
-                to_save_dict = handler_args.get("to_save", {"model": context.get("model")})
+                to_save_dict = handler_args.get(
+                    "to_save", {"model": context.get("model")})
                 target_engine.add_event_handler(event, handler, to_save_dict)
 
         elif handler_type == "EarlyStopping":

@@ -95,8 +95,8 @@ def main():
 
     # Setup training components
     pad_idx = dataset.char_to_idx.get("<PAD>")
-    if "loss_func" in config:
-        criterion = _parse_methods(config["loss_func"], "loss_func")
+    if "loss_fn" in config:
+        criterion = _parse_methods(config["loss_fn"], "loss_fn")
     elif "loss" not in config:
         raise ValueError("Loss configuration is missing in the config file.")
     else:
@@ -119,8 +119,8 @@ def main():
             trainer.add_event_handler(scheduler_event, scheduler_handler)
 
     # Setup evaluation and metrics
-    if "metrics_fun" in config:
-        metrics = _parse_methods(config["metrics_fun"], "metrics_fun")
+    if "metrics_fn" in config:
+        metrics = _parse_methods(config["metrics_fn"], "metrics_fn")()
     else:
         metrics = trainer_utils.get_metrics_from_config(
             config.get("metrics", []), criterion)
@@ -141,11 +141,11 @@ def main():
         "train_evaluator": evaluators.get("train_evaluator"),
         "val_evaluator": evaluators.get("val_evaluator"),
     }
-    if "handler_fun" in config:
-        handlers = _parse_methods(config["handler_fun"], "handler_fun")(context)
+    if "handler_fn" in config:
+        handlers = _parse_methods(config["handler_fn"], "handler_fn")(trainer, context)
     else:
         handlers = trainer_utils.create_handlers_from_config(
-            config.get("handlers", []), context
+            config.get("handlers", []), trainer, context
         )
     # Setup logging
     trainer_utils.log_metrics(

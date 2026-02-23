@@ -26,14 +26,14 @@ scheduler:
     T_max: 1570 # approx 10 epochs * (10000 / 64) = 1562 steps.
     eta_min: 1.0e-6
 
-loss_fun: helper.loss_fn
+loss_fn: helper.loss_fn
 
 loss:
   type: CrossEntropyLoss
   args:
     ignore_index: 0 # Assuming 0 is PAD, need to confirm this index in main2.py
 
-metrics_fun: helper.metrics_fn
+metrics_fn: helper.get_metrics
 
 metrics:
   - name: val_accuracy

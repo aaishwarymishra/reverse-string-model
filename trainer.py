@@ -202,7 +202,7 @@ def create_handlers_from_config(
         return {}
 
     handlers = {}
-    context["trainer"] = trainer  
+    context["trainer"] = trainer
 
     for handler_config in handlers_config:
         handler_type = handler_config.get("type", "Checkpoint")
@@ -212,7 +212,7 @@ def create_handlers_from_config(
 
         # Resolve object references, lambdas, and functions in args
         for key, value in handler_args.items():
-            if isinstance(value, dict) and "to_save" in value:
+            if key == "to_save" and isinstance(value, dict):
                 handler_args[key] = {
                     k: _parse_config_value(v, f"{key}.{k}", context)
                     for k, v in value.items()
@@ -225,6 +225,9 @@ def create_handlers_from_config(
             "name", f"{handler_type}_{len(handlers)}")
 
         if handler_type == "Checkpoint":
+            # Extract to_save before creating handler (it's not a constructor arg)
+            to_save_dict = handler_args.pop(
+                "to_save", {"model": context.get("model")})
             handler = ModelCheckpoint(**handler_args)
             handlers[handler_name] = handler
 
@@ -235,10 +238,6 @@ def create_handlers_from_config(
                         f"Target '{target_name}' not found in context")
                 target_engine = context[target_name]
                 event = _resolve_event(event_str)
-
-                # Extract to_save from handler_args or reconstruct
-                to_save_dict = handler_args.get(
-                    "to_save", {"model": context.get("model")})
                 target_engine.add_event_handler(event, handler, to_save_dict)
 
         elif handler_type == "EarlyStopping":

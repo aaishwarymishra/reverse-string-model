@@ -55,9 +55,9 @@ handlers:
       dirname: "checkpoint"
       n_saved: 2
       filename_prefix: "best"
-      score_function: "lambda engine: engine.state.metrics['val_accuracy']"
+      score_function: "lambda engine: engine.state.metrics['accuracy']"
       score_name: "val_accuracy"
-      global_step_transform: "lambda *_: trainer.state.epoch"
+      global_step_transform: "lambda engine,event: engine.state.epoch"
       to_save: {model: model, optimizer: optimizer, scheduler: scheduler}
     targets: [val_evaluator]
 
@@ -68,7 +68,7 @@ handlers:
       dirname: "checkpoint"
       n_saved: 1
       filename_prefix: "latest"
-      global_step_transform: "lambda *_: trainer.state.epoch"
+      global_step_transform: "lambda engine,event: engine.state.epoch"
       to_save: {model: model}
     targets: [trainer]
 
@@ -81,7 +81,7 @@ handlers:
       dirname: "checkpoint"
       n_saved: 3
       filename_prefix: "periodic"
-      global_step_transform: "lambda *_: trainer.state.epoch"
+      global_step_transform: "lambda engine,event: engine.state.epoch"
       to_save: {model: model}
     targets: [trainer]
 
@@ -107,8 +107,8 @@ handlers:
       - event: EPOCH_COMPLETED
         target: val_evaluator
         tag: validation
-        metric_names: ["val_accuracy", "loss"]
-        global_step_transform: "lambda *_: trainer.state.iteration"
+        metric_names: ["accuracy", "loss"]
+        global_step_transform: "lambda engine,event: engine.state.iteration"
     log_handlers:
       - target: trainer
         event: ITERATION_STARTED

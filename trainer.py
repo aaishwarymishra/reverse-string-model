@@ -66,7 +66,7 @@ class BaseTrainer:
                 event = getattr(Events, event, Events.ITERATION_COMPLETED)
             elif isinstance(event, dict) and 'every' in event and 'name' in event:
                 event = getattr(Events, event.get(
-                    'name', 'ITERATION_COMPLETED'), Events.ITERATION_COMPLETED)(event['every'])
+                    'name', 'ITERATION_COMPLETED'), Events.ITERATION_COMPLETED)(every=int(event['every']))
 
             self.scheduler_handler = LRScheduler(
                 self.scheduler, **scheduler_cfg.get('handler_args', []), **scheduler_cfg.get('kwargs', {}))

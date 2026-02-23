@@ -16,14 +16,15 @@ class PositionalEncoding(nn.Module):
         depth = self.embed_dim // 2
         position = torch.arange(0, self.max_len).unsqueeze(1)
         depths = torch.arange(0, depth).unsqueeze(0)
-        angle_rates = torch.divide(1, torch.pow(10000, torch.divide(depths, depth)))
+        angle_rates = torch.divide(1, torch.pow(
+            10000, torch.divide(depths, depth)))
         angle_rads = torch.multiply(position, angle_rates)
         pe[:, 0::2] = torch.sin(angle_rads)
         pe[:, 1::2] = torch.cos(angle_rads)
         self.register_buffer("pos_encoding", pe)
 
     def forward(self, x):
-        return torch.add(x, self.pos_encoding[: x.shape[-2]])
+        return x + self.pos_encoding[: x.shape[-2]]
 
 
 class FeedForward(nn.Module):
@@ -41,27 +42,28 @@ class FeedForward(nn.Module):
     def forward(self, x):
         out = self.layer_norm(x)
         out = self.seq(out)
-        out = torch.add(x, out)
-        return out
+        return x + out
 
 
 class SelfAttentionBlock(nn.Module):
     def __init__(self, embed_dim: int, heads: int):
         super().__init__()
-        self.self_attention = nn.MultiheadAttention(embed_dim, heads, batch_first=True)
+        self.self_attention = nn.MultiheadAttention(
+            embed_dim, heads, batch_first=True)
         self.layer_norm = nn.LayerNorm(embed_dim)
 
     def forward(self, x, key_padding_mask=None):
         out = self.layer_norm(x)
-        out, _ = self.self_attention(out, out, out, key_padding_mask=key_padding_mask)
-        out = torch.add(x, out)
-        return out
+        out, _ = self.self_attention(
+            out, out, out, key_padding_mask=key_padding_mask)
+        return x + out
 
 
 class CrossAttentionBlock(nn.Module):
     def __init__(self, embed_dim: int, heads: int):
         super().__init__()
-        self.cross_attention = nn.MultiheadAttention(embed_dim, heads, batch_first=True)
+        self.cross_attention = nn.MultiheadAttention(
+            embed_dim, heads, batch_first=True)
         self.layer_norm = nn.LayerNorm(embed_dim)
 
     def forward(self, x, context, key_padding_mask=None):
@@ -69,8 +71,7 @@ class CrossAttentionBlock(nn.Module):
         out, _ = self.cross_attention(
             out, context, context, key_padding_mask=key_padding_mask
         )
-        out = torch.add(x, out)
-        return out
+        return x + out
 
 
 class CausalAttentionBlock(nn.Module):
@@ -90,8 +91,7 @@ class CausalAttentionBlock(nn.Module):
         out, _ = self.causal_attention(
             out, out, out, attn_mask=attn_mask, key_padding_mask=key_padding_mask
         )
-        out = torch.add(x, out)
-        return out
+        return x + out
 
 
 class DecoderBlock(nn.Module):
@@ -123,7 +123,8 @@ class Decoder(nn.Module):
         self.layer_embedding = nn.Embedding(vocab_size, embed_dim)
         self.positional_encoding = PositionalEncoding(embed_dim)
         self.decoder_blocks = nn.ModuleList(
-            [DecoderBlock(embed_dim, heads, intermediate) for _ in range(num_layers)]
+            [DecoderBlock(embed_dim, heads, intermediate)
+             for _ in range(num_layers)]
         )
         self.dropout = nn.Dropout(0.1)
         self.layer_norm = nn.LayerNorm(embed_dim)
@@ -133,11 +134,8 @@ class Decoder(nn.Module):
 
     def forward(self, x, key_padding_mask=None):
         out = self.layer_embedding(x)
-        out = torch.multiply(
-            out,
-            torch.sqrt(
-                torch.tensor(self.embed_dim, dtype=out.dtype, device=out.device)
-            ),
+        out = out * torch.sqrt(
+            torch.tensor(self.embed_dim, dtype=out.dtype, device=out.device)
         )
         out = self.positional_encoding(out)
         out = self.dropout(out)
@@ -163,7 +161,8 @@ class ReverseStringModel(nn.Module):
         self.intermediate = intermediate
         self.heads = heads
         self.vocab_size = vocab_size
-        self.decoder = Decoder(num_layers, embed_dim, intermediate, heads, vocab_size)
+        self.decoder = Decoder(num_layers, embed_dim,
+                               intermediate, heads, vocab_size)
         self.linear = nn.Linear(embed_dim, vocab_size)
         self.pad_idx = pad_idx
 

@@ -55,21 +55,27 @@ def get_optimizer(optimizer_config: dict, model_params) -> torch.optim.Optimizer
 
 def create_scheduler_from_config(
     scheduler_config: Dict[str, Any], optimizer: torch.optim.Optimizer, total_iters: int
-) -> Tuple[torch.optim.lr_scheduler.LRScheduler, Callable]:
+) -> Tuple[torch.optim.lr_scheduler.LRScheduler, Callable, Any]:
     """
-    Instantiate scheduler from config and return the scheduler and event function.
-    For Ignite, we use StepLR scheduler attached via create_ignite_lr_scheduler_handler.
+    Instantiate scheduler from config and return the (scheduler, handler, event_type).
     """
     if not scheduler_config:
-        return None, None
+        return None, None, None
 
     scheduler_type = scheduler_config.get("type", "CosineAnnealingLR")
     scheduler_args = scheduler_config.get("args", {}).copy()
     event_type = scheduler_config.get("event", "ITERATION_COMPLETED")
-    scheduler_handler_args = scheduler_config.get("handler_args", {})
+    scheduler_handler_args = scheduler_config.get("handler_args", {}) or {}
 
-    scheduler = getattr(lr_schedulers, scheduler_type)(
-        optimizer, **scheduler_args)
+    # Handle dependencies like total_iters for T_max
+    if scheduler_type == "CosineAnnealingLR" and "T_max" not in scheduler_args:
+        scheduler_args["T_max"] = total_iters
+
+    scheduler_cls = getattr(lr_schedulers, scheduler_type, None)
+    if scheduler_cls is None:
+        raise ValueError(f"Unknown scheduler type: {scheduler_type}")
+
+    scheduler = scheduler_cls(optimizer, **scheduler_args)
     scheduler_handler = LRScheduler(scheduler, **scheduler_handler_args)
 
     return scheduler, scheduler_handler, event_type
@@ -81,33 +87,17 @@ def create_trainer_from_config(
     optimizer: torch.optim.Optimizer,
     device: str,
     config: Dict[str, Any],
-):
+) -> engine.Engine:
     """
-    Create trainer, evaluators, scheduler, and handlers from YAML config.
-    Returns (trainer, val_evaluator, handlers_dict) or (trainer, None, None) if minimal setup.
-
-    Args:
-        model: The model to train.
-        criterion: Loss function.
-        optimizer: Optimizer instance.
-        device: Device to train on ('cpu' or 'cuda').
-        config: YAML config dict with trainer, metrics, scheduler, handlers sections.
-        train_loader: Training data loader (optional, for evaluators).
-        val_loader: Validation data loader (optional, for evaluators).
-
-    Returns:
-        Tuple of (trainer, val_evaluator, handlers_dict) if full config,
-        or (trainer, None, None) if minimal config.
+    Create trainer from YAML config.
+    Uses Ignite's built-in create_supervised_trainer.
     """
-    # Create trainer
-    trainer_type = config.get("trainer", {}).get(
-        "type", "create_supervised_trainer")
-    trainer_args = config.get("trainer", {}).get("args", {})
-    trainer = getattr(engine, trainer_type)(model, optimizer,
-                                            criterion, device=device, **trainer_args)
+    trainer_type = config.get("type", "create_supervised_trainer")
+    trainer_args = config.get("args", {}) or {}
+    trainer = getattr(engine, trainer_type)(
+        model, optimizer, criterion, device=device, **trainer_args
+    )
     return trainer
-
-    # Early return if no evaluators/handlers configured
 
 
 def create_evaluator_from_config(
@@ -150,20 +140,20 @@ def get_metrics_from_config(metrics_config: list[dict[str, Any]], criterion: tor
     return metrics
 
 
-def _resolve_event(event_str: str, engine: engine.Engine = None) -> Any:
+def _resolve_event(event: str) -> Any:
     """
     Resolve event string like 'EPOCH_COMPLETED' or 'EPOCH_COMPLETED(every=5)' to Events constant.
     """
-    if "(" in event_str:
-        # Handle Events.EPOCH_COMPLETED(every=5) syntax
-        match = event_str.split("(")
-        event_name = match[0]
-        args_str = "(" + match[1]
-        event_base = getattr(Events, event_name)
-        # eval the event call with restricted scope
-        return eval(f"event_base{args_str}", {"__builtins__": {}, "event_base": event_base}, {})
-    else:
-        return getattr(Events, event_str)
+    if isinstance(event, str):
+        return getattr(Events, event)
+    if isinstance(event, dict) and "type" in event:
+        event_type = getattr(Events, event["type"])
+        if "every" in event:
+            return event_type(every=event["every"])
+        return event_type
+    raise ValueError(f"Invalid event format: {event!r}")
+    
+
 
 
 def _parse_config_value(value: Any, key: str, context: Dict[str, Any] = None) -> Any:
@@ -176,8 +166,10 @@ def _parse_config_value(value: Any, key: str, context: Dict[str, Any] = None) ->
     """
     if isinstance(value, str):
         if value.startswith("lambda"):
-            # evaluate lambda in restricted globals to reduce risk
-            return eval(value, {"__builtins__": {}}, {})
+            # evaluate lambda in context if needed
+            # For simplicity, we keep eval but only if absolutely required.
+            # Usually for metric output_transform and score_function.
+            return eval(value, {"__builtins__": {}, "trainer": context.get("trainer") if context else None}, {})
         if context and value in context:
             return context[value]
     elif isinstance(value, dict) and "function" in value:
@@ -191,11 +183,9 @@ def _parse_config_value(value: Any, key: str, context: Dict[str, Any] = None) ->
     return value
 
 
-def get_handlers_from_config(
+def create_handlers_from_config(
     handlers_config: list[dict[str, Any]],
-    trainer: engine.Engine,
-    evaluators: Dict[str, engine.Engine],
-    model: torch.nn.Module,
+    context: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
     Instantiate and attach handlers from config.
@@ -203,9 +193,7 @@ def get_handlers_from_config(
 
     Args:
         handlers_config: List of handler configurations from YAML.
-        trainer: The training engine.
-        evaluators: Dict of evaluators keyed by name (e.g., {"val_evaluator": ..., "train_evaluator": ...}).
-        model: The model instance.
+        context: Dictionary of context objects (trainer, model, optimizer, scheduler, evaluators).
 
     Returns:
         Dictionary of instantiated handlers.
@@ -214,11 +202,6 @@ def get_handlers_from_config(
         return {}
 
     handlers = {}
-    context = {
-        "trainer": trainer,
-        "model": model,
-        **evaluators,
-    }
 
     for handler_config in handlers_config:
         handler_type = handler_config.get("type", "Checkpoint")
@@ -253,7 +236,7 @@ def get_handlers_from_config(
                 event = _resolve_event(event_str)
 
                 # Extract to_save from handler_args or reconstruct
-                to_save_dict = handler_args.get("to_save", {"model": model})
+                to_save_dict = handler_args.get("to_save", {"model": context.get("model")})
                 target_engine.add_event_handler(event, handler, to_save_dict)
 
         elif handler_type == "EarlyStopping":
@@ -331,13 +314,15 @@ def get_handlers_from_config(
 
 
 def log_metrics(trainer: engine.Engine, train_evaluator=None, val_evaluator=None, train_loader=None, val_loader=None):
+    @trainer.on(Events.EPOCH_COMPLETED)
     def log(engine: engine.Engine):
+        train_metrics = "N/A"
+        val_metrics = "N/A"
         if train_evaluator is not None and train_loader is not None:
             train_evaluator.run(train_loader)
             train_metrics = train_evaluator.state.metrics
         if val_evaluator is not None and val_loader is not None:
             val_evaluator.run(val_loader)
             val_metrics = val_evaluator.state.metrics
-        print(f"Epoch {trainer.state.epoch} - Train Metrics: {train_metrics if train_evaluator else 'N/A'}, Val Metrics: {val_metrics if val_evaluator else 'N/A'}")
-
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, log)
+        print(
+            f"Epoch {trainer.state.epoch} - Train Metrics: {train_metrics}, Val Metrics: {val_metrics}")

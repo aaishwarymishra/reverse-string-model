@@ -2,10 +2,27 @@ import yaml
 import argparse
 from dataset import ReverseStringDataset, create_dataloader
 from model import ReverseStringModel
-from trainer 
+import trainer as trainer_utils
 from ignite.contrib.handlers import TensorboardLogger
 import torch
 import torch.nn as nn
+import importlib
+from typing import Any
+
+
+def _parse_methods(value: Any, key: str) -> Any:
+    if isinstance(value, str):
+        if value.startswith("lambda"):
+            return eval(value, {"__builtins__": {}})
+        else:
+            func_path = value
+            if not isinstance(func_path, str) or "." not in func_path:
+                raise ValueError(
+                    f"Invalid function path for '{key}': {func_path!r}")
+            module_name, func_name = func_path.rsplit(".", 1)
+            module = importlib.import_module(module_name)
+            return getattr(module, func_name)
+    raise ValueError(f"Invalid value for '{key}': {value!r}. Must be a string starting with 'lambda' or a module path.")
 
 
 def load_yaml_config(config_path: str) -> dict:
@@ -14,9 +31,9 @@ def load_yaml_config(config_path: str) -> dict:
         return yaml.safe_load(f)
 
 
-
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train a reverse string model.")
+    parser = argparse.ArgumentParser(
+        description="Train a reverse string model.")
     parser.add_argument(
         "--config",
         type=str,
@@ -63,7 +80,7 @@ def main():
     )
 
     # Create model
-    model_config = config["model"]
+    model_config = config.get("model", {})
     model = ReverseStringModel(
         num_layers=model_config.get("num_layers", 2),
         embed_dim=model_config.get("embed_dim", 128),
@@ -76,32 +93,78 @@ def main():
     print(f"Model: {model}")
     print(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-    # Create loss function
+    # Setup training components
     pad_idx = dataset.char_to_idx.get("<PAD>")
-    criterion = trainer.get_loss(config["loss"], pad_idx=pad_idx)
+    if "loss_func" in config:
+        criterion = _parse_methods(config["loss_func"], "loss_func")
+    elif "loss" not in config:
+        raise ValueError("Loss configuration is missing in the config file.")
+    else:
+        criterion = trainer_utils.get_loss(config.get("loss", {}), pad_idx=pad_idx)
+    optimizer = trainer_utils.get_optimizer(
+        config.get("optimizer", {}), model.parameters())
 
-    # Create optimizer
-    optimizer = trainer.get_optimizer(config["optimizer"], model.parameters())
-    scheduler = None
+    trainer = trainer_utils.create_trainer_from_config(
+        model, criterion, optimizer, device, config.get("trainer", {})
+    )
+
+    # Attach scheduler if configured
     if "scheduler" in config:
-        scheduler,scheduler_handler,scheduler_event = trainer.get_scheduler(config["scheduler"], optimizer)
+        total_steps = len(train_loader) * \
+            config.get("trainer", {}).get("epochs", 1)
+        scheduler, scheduler_handler, scheduler_event = trainer_utils.create_scheduler_from_config(
+            config["scheduler"], optimizer, total_steps
+        )
+        if scheduler and scheduler_handler:
+            trainer.add_event_handler(scheduler_event, scheduler_handler)
 
-    trainer = trainer.create_trainer_from_config(model, optimizer, criterion, device, config.get("trainer", {}))
-
-    if scheduler is not None:
-        trainer.add_event_handler(scheduler_event, scheduler_handler)
-
-    metrics = trainer.get_metrics_from_config(config.get("metrics", {}), criterion)
-
+    # Setup evaluation and metrics
+    if "metrics_fun" in config:
+        metrics = _parse_methods(config["metrics_fun"], "metrics_fun")
+    else:
+        metrics = trainer_utils.get_metrics_from_config(
+            config.get("metrics", []), criterion)
     evaluators = {}
-    if train_loader is not None and metrics:
-        evaluators["train_evaluator"] = trainer.create_evaluator_from_config(model, device, metrics, config.get("evaluator", {}))
-    if val_loader is not None and metrics:
-        evaluators["val_evaluator"] = trainer.create_evaluator_from_config(model, device, metrics, config.get("evaluator", {}))
+    if metrics:
+        evaluators["train_evaluator"] = trainer_utils.create_evaluator_from_config(
+            model, criterion, metrics, device, config.get("evaluator", {})
+        )
+        evaluators["val_evaluator"] = trainer_utils.create_evaluator_from_config(
+            model, criterion, metrics, device, config.get("evaluator", {})
+        )
 
-    handlers = trainer.create_handlers_from_config(config.get("handlers", {}), trainer, evaluators,model)
+    # Attach handlers (checkpoints, early stopping, etc.)
+    context = {
+        "model": model,
+        "optimizer": optimizer,
+        "scheduler": scheduler if "scheduler" in config else None,
+        "train_evaluator": evaluators.get("train_evaluator"),
+        "val_evaluator": evaluators.get("val_evaluator"),
+    }
+    if "handler_fun" in config:
+        handlers = _parse_methods(config["handler_fun"], "handler_fun")(context)
+    else:
+        handlers = trainer_utils.create_handlers_from_config(
+            config.get("handlers", []), context
+        )
+    # Setup logging
+    trainer_utils.log_metrics(
+        trainer,
+        train_evaluator=evaluators.get("train_evaluator"),
+        val_evaluator=evaluators.get("val_evaluator"),
+        train_loader=train_loader,
+        val_loader=val_loader
+    )
 
-    
+    # Start training
+    trainer.run(train_loader, max_epochs=config.get(
+        "trainer", {}).get("epochs", 10))
+
+    # Clean up handlers
+    for handler in handlers.values():
+        if isinstance(handler, TensorboardLogger):
+            handler.close()
+
 
 if __name__ == "__main__":
     main()

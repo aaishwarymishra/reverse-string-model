@@ -25,18 +25,21 @@ scheduler:
   args:
     T_max: 1570 # approx 10 epochs * (10000 / 64) = 1562 steps.
     eta_min: 1.0e-6
-  handler_args:
+
+loss_fun: helper.loss_fn
 
 loss:
   type: CrossEntropyLoss
   args:
     ignore_index: 0 # Assuming 0 is PAD, need to confirm this index in main2.py
 
+metrics_fun: helper.metrics_fn
+
 metrics:
   - name: val_accuracy
     type: Accuracy
     args:
-      output_transform: lambda x: (x[0], x[1]) if isinstance(x, tuple) else x
+      output_transform: "lambda x: (x[0], x[1]) if isinstance(x, tuple) else x"
 
 trainer:
   epochs: 10
@@ -71,7 +74,9 @@ handlers:
 
   - name: periodic_checkpoint
     type: Checkpoint
-    event: EPOCH_COMPLETED(every=5)
+    event:
+      type: EPOCH_COMPLETED
+      every: 5
     args:
       dirname: "checkpoint"
       n_saved: 3

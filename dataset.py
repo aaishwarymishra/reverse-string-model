@@ -30,9 +30,12 @@ class ReverseStringDataset(Dataset):
         self.idx_to_char = {
             i + 4: self.characters[i] for i in range(0, len(self.characters))
         }
-        self.char_to_idx = {value: key for key, value in self.idx_to_char.items()}
-        self.idx_to_char.update({0: "<PAD>", 1: "<SOS>", 2: "<SEP>", 3: "<EOS>"})
-        self.char_to_idx.update({"<PAD>": 0, "<SOS>": 1, "<SEP>": 2, "<EOS>": 3})
+        self.char_to_idx = {value: key for key,
+                            value in self.idx_to_char.items()}
+        self.idx_to_char.update(
+            {0: "<PAD>", 1: "<SOS>", 2: "<SEP>", 3: "<EOS>"})
+        self.char_to_idx.update(
+            {"<PAD>": 0, "<SOS>": 1, "<SEP>": 2, "<EOS>": 3})
         self.pad_idx = self.char_to_idx["<PAD>"]
         self.sos_idx = self.char_to_idx["<SOS>"]
         self.eos_idx = self.char_to_idx["<EOS>"]
@@ -96,17 +99,48 @@ class ReverseStringDataset(Dataset):
         return "".join(s)
 
 
-def collator(batch):
+def collate_fn(batch):
+    """Pad sequences in batch."""
     x = [data[0] for data in batch]
     y = [data[1] for data in batch]
 
-    x = pad_sequence(x, batch_first=True)
-    y = pad_sequence(y, batch_first=True)
+    x = pad_sequence(x, batch_first=True, padding_value=0)
+    y = pad_sequence(y, batch_first=True, padding_value=0)
 
     return x, y
 
 
-def create_dataloader(dataset, batch_size=32, shuffle=True):
-    return DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collator
+def create_dataloader(
+    dataset: Dataset,
+    batch_size: int = 32,
+    shuffle: bool = True,
+    train_split: float | None = None,
+) -> tuple[DataLoader, DataLoader | None]:
+    """Create training and optional validation dataloaders."""
+    if train_split is not None:
+        train_size = int(train_split * len(dataset))
+        val_size = len(dataset) - train_size
+        train_dataset, val_dataset = torch.utils.data.random_split(
+            dataset, [train_size, val_size]
+        )
+        return (
+            DataLoader(
+                train_dataset,
+                batch_size=batch_size,
+                shuffle=shuffle,
+                collate_fn=collate_fn,
+            ),
+            DataLoader(
+                val_dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                collate_fn=collate_fn,
+            ),
+        )
+
+    return (
+        DataLoader(
+            dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn
+        ),
+        None,
     )

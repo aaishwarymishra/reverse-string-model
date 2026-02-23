@@ -25,27 +25,89 @@ scheduler:
   args:
     T_max: 1570 # approx 10 epochs * (10000 / 64) = 1562 steps.
     eta_min: 1.0e-6
+  handler_args:
 
 loss:
   type: CrossEntropyLoss
   args:
     ignore_index: 0 # Assuming 0 is PAD, need to confirm this index in main2.py
 
+metrics:
+  - name: val_accuracy
+    type: Accuracy
+    args:
+      output_transform: lambda x: (x[0], x[1]) if isinstance(x, tuple) else x
+
 trainer:
   epochs: 10
   device: cuda
   type: create_supervised_trainer
+  args: 
 
 handlers:
-  - type: Checkpoint
+  - name: best_checkpoint
+    type: Checkpoint
+    event: COMPLETED
+    args:
+      dirname: "checkpoint"
+      n_saved: 2
+      filename_prefix: "best"
+      score_function: "lambda engine: engine.state.metrics['val_accuracy']"
+      score_name: "val_accuracy"
+      global_step_transform: "lambda *_: trainer.state.epoch"
+      to_save: {model: model, optimizer: optimizer, scheduler: scheduler}
+    targets: [val_evaluator]
+
+  - name: latest_checkpoint
+    type: Checkpoint
     event: EPOCH_COMPLETED
     args:
-        to_save: 
-            model: model
-            optimizer: optimizer
-            scheduler: scheduler
-        save_handler: "checkpoint" 
-        filename_prefix: "best"
-        score_name: "val_accuracy"
-        global_step_transform: null 
-    targets: ["val_evaluator"] # Where to attach
+      dirname: "checkpoint"
+      n_saved: 1
+      filename_prefix: "latest"
+      global_step_transform: "lambda *_: trainer.state.epoch"
+      to_save: {model: model}
+    targets: [trainer]
+
+  - name: periodic_checkpoint
+    type: Checkpoint
+    event: EPOCH_COMPLETED(every=5)
+    args:
+      dirname: "checkpoint"
+      n_saved: 3
+      filename_prefix: "periodic"
+      global_step_transform: "lambda *_: trainer.state.epoch"
+      to_save: {model: model}
+    targets: [trainer]
+
+  - name: early_stopping
+    type: EarlyStopping
+    event: COMPLETED
+    args:
+      patience: 3
+      score_function: "lambda engine: -engine.state.metrics['loss']"
+      trainer: trainer
+      min_delta: 0.001
+    targets: [val_evaluator]
+
+  - name: tensorboard_logger
+    type: TensorboardLogger
+    args:
+      log_dir: "./tb-logs"
+    attachments:
+      - event: ITERATION_COMPLETED
+        target: trainer
+        tag: training
+        output_transform: "lambda loss: {'batch_loss': loss}"
+      - event: EPOCH_COMPLETED
+        target: val_evaluator
+        tag: validation
+        metric_names: ["val_accuracy", "loss"]
+        global_step_transform: "lambda *_: trainer.state.iteration"
+    log_handlers:
+      - target: trainer
+        event: ITERATION_STARTED
+        handler_type: OptimizerParamsHandler
+        args:
+          optimizer: optimizer
+    targets: [train_evaluator, val_evaluator]

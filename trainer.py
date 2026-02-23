@@ -108,7 +108,7 @@ class BaseTrainer:
         """Attach evaluation handler with closure over dataloaders."""
         path = config.get('path')
 
-        # Choose handler function: custom from config or default
+
         if path is not None:
             eval_handler_fn = parse_function_from_string(path)
         else:
@@ -149,11 +149,9 @@ class BaseTrainer:
 
     @staticmethod
     def log_evaluation(engine, train_evaluator, val_evaluator=None, train_loader=None, val_loader=None):
-        # Run train evaluator
         train_evaluator.run(train_loader)
         train_metrics = train_evaluator.state.metrics
 
-        # Build train metrics string
         train_str = f"Training Results - Epoch: {engine.state.epoch}"
         for name, value in train_metrics.items():
             train_str += f" {name}: {value:.4f}"
@@ -187,7 +185,6 @@ class PretrainTrainer(BaseTrainer):
 
     def get_eval_metrics(self):
         """Metrics for evaluation engines (used at epoch end)."""
-        # By default, use same metrics as training
         if self.cfg.get('metrics') is not None and self.cfg.get('metrics').get('path') is not None:
             metrics = parse_function_from_string(
                 self.cfg.get('metrics').get('path'))()

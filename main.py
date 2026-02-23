@@ -1,28 +1,11 @@
-import yaml
 import argparse
+import yaml
+
 from dataset import ReverseStringDataset, create_dataloader
+import helper
 from model import ReverseStringModel
-import trainer as trainer_utils
-from ignite.contrib.handlers import TensorboardLogger
+from trainer import PretrainTrainer
 import torch
-import torch.nn as nn
-import importlib
-from typing import Any
-
-
-def _parse_methods(value: Any, key: str) -> Any:
-    if isinstance(value, str):
-        if value.startswith("lambda"):
-            return eval(value, {"__builtins__": {}})
-        else:
-            func_path = value
-            if not isinstance(func_path, str) or "." not in func_path:
-                raise ValueError(
-                    f"Invalid function path for '{key}': {func_path!r}")
-            module_name, func_name = func_path.rsplit(".", 1)
-            module = importlib.import_module(module_name)
-            return getattr(module, func_name)
-    raise ValueError(f"Invalid value for '{key}': {value!r}. Must be a string starting with 'lambda' or a module path.")
 
 
 def load_yaml_config(config_path: str) -> dict:
@@ -95,75 +78,34 @@ def main():
 
     # Setup training components
     pad_idx = dataset.char_to_idx.get("<PAD>")
-    if "loss_fn" in config:
-        criterion = _parse_methods(config["loss_fn"], "loss_fn")
-    elif "loss" not in config:
-        raise ValueError("Loss configuration is missing in the config file.")
-    else:
-        criterion = trainer_utils.get_loss(config.get("loss", {}), pad_idx=pad_idx)
-    optimizer = trainer_utils.get_optimizer(
-        config.get("optimizer", {}), model.parameters())
+    helper.set_pad_idx(pad_idx)
 
-    trainer = trainer_utils.create_trainer_from_config(
-        model, criterion, optimizer, device, config.get("trainer", {})
-    )
+    trainer = PretrainTrainer(model=model, device=device, cfg=config)
+    train_evaluator, val_evaluator = trainer.create_evaluators()
+    trainer._train_evaluator = train_evaluator
+    trainer._val_evaluator = val_evaluator
 
-    # Attach scheduler if configured
-    if "scheduler" in config:
-        total_steps = len(train_loader) * \
-            config.get("trainer", {}).get("epochs", 1)
-        scheduler, scheduler_handler, scheduler_event = trainer_utils.create_scheduler_from_config(
-            config["scheduler"], optimizer, total_steps
-        )
-        if scheduler and scheduler_handler:
-            trainer.add_event_handler(scheduler_event, scheduler_handler)
-
-    # Setup evaluation and metrics
-    if "metrics_fn" in config:
-        metrics = _parse_methods(config["metrics_fn"], "metrics_fn")()
-    else:
-        metrics = trainer_utils.get_metrics_from_config(
-            config.get("metrics", []), criterion)
-    evaluators = {}
-    if metrics:
-        evaluators["train_evaluator"] = trainer_utils.create_evaluator_from_config(
-            model, criterion, metrics, device, config.get("evaluator", {})
-        )
-        evaluators["val_evaluator"] = trainer_utils.create_evaluator_from_config(
-            model, criterion, metrics, device, config.get("evaluator", {})
-        )
-
-    # Attach handlers (checkpoints, early stopping, etc.)
-    context = {
-        "model": model,
-        "optimizer": optimizer,
-        "scheduler": scheduler if "scheduler" in config else None,
-        "train_evaluator": evaluators.get("train_evaluator"),
-        "val_evaluator": evaluators.get("val_evaluator"),
-    }
-    if "handler_fn" in config:
-        handlers = _parse_methods(config["handler_fn"], "handler_fn")(trainer, context)
-    else:
-        handlers = trainer_utils.create_handlers_from_config(
-            config.get("handlers", []), trainer, context
-        )
-    # Setup logging
-    trainer_utils.log_metrics(
-        trainer,
-        train_evaluator=evaluators.get("train_evaluator"),
-        val_evaluator=evaluators.get("val_evaluator"),
+    handlers = helper.attach_handlers(
+        trainer=trainer,
+        train_evaluator=train_evaluator,
+        val_evaluator=val_evaluator,
         train_loader=train_loader,
-        val_loader=val_loader
+        val_loader=val_loader,
+        config=config.get("handlers", {}),
+        context={
+            "model": model,
+            "optimizer": trainer.optimizer,
+            "scheduler": trainer.scheduler,
+        },
     )
 
     # Start training
-    trainer.run(train_loader, max_epochs=config.get(
-        "trainer", {}).get("epochs", 10))
+    trainer.run(train_loader, val_loader)
 
     # Clean up handlers
-    for handler in handlers.values():
-        if isinstance(handler, TensorboardLogger):
-            handler.close()
+    tb_logger = handlers.get("tensorboard")
+    if tb_logger is not None:
+        tb_logger.close()
 
 
 if __name__ == "__main__":

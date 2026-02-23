@@ -28,11 +28,10 @@ class BaseTrainer:
         self.engine = Engine(self.train_step)
         self.loss_fn = self.get_loss_fn()
 
-        # Evaluators (created lazily)
+
         self._train_evaluator = None
         self._val_evaluator = None
 
-        self.attach_metrics()
         self.attach_scheduler()
         self.attach_handlers()
 
@@ -92,24 +91,38 @@ class BaseTrainer:
         train_evaluator = Engine(self.eval_step)
         val_evaluator = Engine(self.eval_step)
 
+        train_metrics = self.get_metrics() 
+        val_metrics = self.get_metrics()    
 
-        for name, metric in eval_metrics.items():
-            metric.attach(train_evaluator, name)
+        if train_metrics:
+            for name, metric in train_metrics.items():
+                metric.attach(train_evaluator, name)
 
-        for name, metric in eval_metrics.items():
-            metric.attach(val_evaluator, name)
+        if val_metrics:
+            for name, metric in val_metrics.items():
+                metric.attach(val_evaluator, name)
 
         return train_evaluator, val_evaluator
 
     def attach_evaluation_handler(self, config, train_loader, val_loader=None):
-        path = config.get('path', {})
+        """Attach evaluation handler with closure over dataloaders."""
+        path = config.get('path')
+
+        # Choose handler function: custom from config or default
         if path is not None:
             eval_handler_fn = parse_function_from_string(path)
         else:
             eval_handler_fn = self.log_evaluation
 
+        # Wrapper to inject evaluators and dataloaders via closure
         def eval_handler_fn_wrapper(engine):
-            return eval_handler_fn(engine, train_evaluator=self._train_evaluator, val_evaluator=self._val_evaluator, train_loader=train_loader, val_loader=val_loader)
+            return eval_handler_fn(
+                engine,
+                train_evaluator=self._train_evaluator,
+                val_evaluator=self._val_evaluator,
+                train_loader=train_loader,
+                val_loader=val_loader
+            )
 
         self.engine.add_event_handler(
             Events.EPOCH_COMPLETED, eval_handler_fn_wrapper)
@@ -124,6 +137,9 @@ class BaseTrainer:
         """Run training with optional validation."""
         # Attach evaluation handler if configured
         if self.cfg.get('evaluation', {}).get('enabled', False) and self._train_evaluator is None and self._val_evaluator is None:
+            self._train_evaluator, self._val_evaluator = self.create_evaluators()
+            print("Created evaluators with metrics:",
+                  self._train_evaluator.state.metrics if self._train_evaluator else None)
             self.attach_evaluation_handler(self.cfg.get(
                 'evaluation'), train_loader, val_loader)
 

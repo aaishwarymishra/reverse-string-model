@@ -153,8 +153,7 @@ def attach_handlers(
     if early_stopping_cfg.get("enabled", False):
         early_stopping = EarlyStopping(
             patience=int(early_stopping_cfg.get("patience", 3)),
-            score_function=_parse_function(
-                early_stopping_cfg.get("score_function")),
+            score_function=_parse_function(early_stopping_cfg.get("score_function")),
             trainer=trainer.engine,
             min_delta=float(early_stopping_cfg.get("min_delta", 0.0)),
         )
@@ -168,8 +167,7 @@ def attach_handlers(
 
     tb_cfg = config.get("tensorboard", {})
     if tb_cfg.get("enabled", False):
-        tb_logger = TensorboardLogger(
-            log_dir=tb_cfg.get("log_dir", "./tb-logs"))
+        tb_logger = TensorboardLogger(log_dir=tb_cfg.get("log_dir", "./tb-logs"))
         tb_logger.attach_output_handler(
             trainer.engine,
             event_name=Events.ITERATION_COMPLETED,
@@ -178,9 +176,7 @@ def attach_handlers(
         )
 
         metric_names = tb_cfg.get("metric_names", ["accuracy", "loss"])
-        global_step_transform = _parse_function(
-            tb_cfg.get("global_step_transform")
-        )
+        global_step_transform = _parse_function(tb_cfg.get("global_step_transform"))
 
         if train_evaluator is not None:
             tb_logger.attach_output_handler(

@@ -1,5 +1,6 @@
 from ignite.engine import Engine, Events
 from ignite.handlers.param_scheduler import LRScheduler
+from typing import Callable, Any
 import torch
 import importlib
 
@@ -7,10 +8,10 @@ import importlib
 def parse_function_from_string(val: str):
     if not isinstance(val, str):
         raise TypeError(f"Expected string, got {type(val).__name__}")
-    if val.startswith('lambda'):
+    if val.startswith("lambda"):
         return eval(val, {"__builtins__": None}, {})
-    elif '.' in val:
-        module_name, func_name = val.rsplit('.', 1)
+    elif "." in val:
+        module_name, func_name = val.rsplit(".", 1)
         module = importlib.import_module(module_name)
         return getattr(module, func_name)
     else:
@@ -25,64 +26,123 @@ class BaseTrainer:
         self.optimizer = self.build_optimizer()
         self.scheduler = self.build_scheduler()
         self.train_step = self.get_train_step()
+        self.eval_step = self.get_eval_step()
         self.engine = Engine(self.train_step)
         self.loss_fn = self.get_loss_fn()
 
-
-        self._train_evaluator = None
-        self._val_evaluator = None
+        self.train_evaluator = None
+        self.val_evaluator = None
 
         self.attach_scheduler()
         self.attach_handlers()
 
-    def get_train_step(self):
-        return self.train_step
+    def get_train_step(self) -> Callable:
+        """Returns the training step function, either from config or default."""
+        if self.cfg.get("trainer", {}).get("train_step") is not None:
+            train_step = parse_function_from_string(
+                self.cfg.get("trainer", {}).get("train_step")
+            )
 
-    def train_step(self, engine, batch):
-        self.model.train()
-        self.optimizer.zero_grad()
+            def train_step_wrapper(engine, batch):
+                return train_step(
+                    engine, self.model, batch, self.loss_fn, self.optimizer, self.device
+                )
 
-        x, y = batch[0].to(self.device), batch[1].to(self.device)
+            return train_step_wrapper
+        else:
+            return self.default_train_step()
 
-        logits = self.model(x)
-        loss = self.loss_fn(logits, y)
-        loss.backward()
-        self.optimizer.step()
-        return loss.item()
+    def default_train_step(self) -> Callable:
+        """Returns the default training step function."""
+        raise NotImplementedError(
+            "train_step method must be implemented in subclass or provided via config"
+        )
 
-    def build_optimizer(self):
+    def default_optimizer(self) -> torch.optim.Optimizer:
+        """Returns the default optimizer, must be implemented in subclass."""
+        raise NotImplementedError(
+            "build_optimizer method must be implemented in subclass or provided via config"
+        )
+
+    def build_optimizer(self) -> torch.optim.Optimizer:
+        """Build optimizer from config or return default."""
+        optimizer_cfg = self.cfg.get("optimizer")
+        if optimizer_cfg is not None and optimizer_cfg.get("path") is not None:
+            optimizer = parse_function_from_string(optimizer_cfg.get("path"))
+            return optimizer(self.model.parameters(), **optimizer_cfg.get("kargs", {}))
+        else:
+            return self.default_optimizer()
+
+    def default_scheduler(self) -> torch.optim.lr_scheduler.LRScheduler | None:
+        """Returns the default scheduler."""
         return None
 
-    def build_scheduler(self):
-        return None
+    def build_scheduler(self) -> torch.optim.lr_scheduler.LRScheduler | None:
+        """Build scheduler from config or return default."""
+        scheduler_cfg = self.cfg.get("scheduler")
+        if scheduler_cfg is not None and scheduler_cfg.get("path") is not None:
+            scheduler = parse_function_from_string(scheduler_cfg.get("path"))
+            return scheduler(self.optimizer, **scheduler_cfg.get("kargs", {}))
+        else:
+            return self.default_scheduler()
 
     def attach_scheduler(self):
         """Attach scheduler to engine events if configured."""
         if self.scheduler is not None:
-            scheduler_cfg = self.cfg.get('scheduler', {})
-            event = scheduler_cfg.get('event', 'ITERATION_COMPLETED')
+            scheduler_cfg = self.cfg.get("scheduler", {})
+            event = scheduler_cfg.get("event", "ITERATION_COMPLETED")
 
             if isinstance(event, str):
                 event = getattr(Events, event, Events.ITERATION_COMPLETED)
-            elif isinstance(event, dict) and 'every' in event and 'name' in event:
-                event = getattr(Events, event.get(
-                    'name', 'ITERATION_COMPLETED'), Events.ITERATION_COMPLETED)(every=int(event['every']))
+            elif isinstance(event, dict) and "every" in event and "name" in event:
+                event = getattr(
+                    Events,
+                    event.get("name", "ITERATION_COMPLETED"),
+                    Events.ITERATION_COMPLETED,
+                )(every=int(event["every"]))
 
             self.scheduler_handler = LRScheduler(
-                self.scheduler, **scheduler_cfg.get('handler_args', []), **scheduler_cfg.get('kwargs', {}))
+                self.scheduler, **scheduler_cfg.get("handler_kargs", {})
+            )
             self.engine.add_event_handler(event, self.scheduler_handler)
 
-    def get_metrics(self):
-        return None
+    def default_metrics(self) -> dict[str, Any]:
+        """Returns the default metrics dict for evaluators."""
+        raise NotImplementedError(
+            "get_metrics method must be implemented in subclass or provided via config"
+        )
 
-    def eval_step(self, engine, batch):
-        self.model.eval()
-        with torch.no_grad():
-            x, y = batch[0].to(self.device), batch[1].to(self.device)
-            y_pred = self.model(x)
-            return y_pred, y
+    def get_metrics(self) -> dict[str, Any]:
+        """Metrics for evaluators (attached during evaluation)."""
+        metrics_cfg = self.cfg.get("metrics")
+        if metrics_cfg is not None and metrics_cfg.get("path") is not None:
+            metrics = parse_function_from_string(metrics_cfg.get("path"))(
+                self.loss_fn, **metrics_cfg.get("kargs", {})
+            )
+            return metrics
+        return self.default_metrics()
 
-    def create_evaluators(self):
+    def default_eval_step(self):
+        """Returns the default evaluation step function."""
+        raise NotImplementedError(
+            "eval_step method must be implemented in subclass or provided via config"
+        )
+
+    def get_eval_step(self) -> Callable:
+        """Returns the evaluation step function, either from config or default."""
+        if self.cfg.get("trainer", {}).get("eval_step") is not None:
+            eval_step = parse_function_from_string(
+                self.cfg.get("trainer", {}).get("eval_step")
+            )
+
+            def eval_step_wrapper(engine, batch):
+                return eval_step(engine, self.model, batch, self.device)
+
+            return eval_step_wrapper
+        else:
+            return self.default_eval_step()
+
+    def create_evaluators(self) -> tuple[Engine, Engine] | tuple[None, None]:
         """Create train and validation evaluators with metrics."""
         eval_metrics = self.get_metrics()
         if eval_metrics is None:
@@ -91,8 +151,8 @@ class BaseTrainer:
         train_evaluator = Engine(self.eval_step)
         val_evaluator = Engine(self.eval_step)
 
-        train_metrics = self.get_metrics() 
-        val_metrics = self.get_metrics()    
+        train_metrics = self.get_metrics()
+        val_metrics = self.get_metrics()
 
         if train_metrics:
             for name, metric in train_metrics.items():
@@ -106,29 +166,39 @@ class BaseTrainer:
 
     def attach_evaluation_handler(self, config, train_loader, val_loader=None):
         """Attach evaluation handler with closure over dataloaders."""
-        path = config.get('path')
-
+        path = config.get("path")
 
         if path is not None:
-            eval_handler_fn = parse_function_from_string(path)
+            evaluation_log_fn = parse_function_from_string(path)
         else:
-            eval_handler_fn = self.log_evaluation
+            evaluation_log_fn = self.default_evaluation_log_fn
 
         # Wrapper to inject evaluators and dataloaders via closure
-        def eval_handler_fn_wrapper(engine):
-            return eval_handler_fn(
+        def evaluation_log_fn_wrapper(engine):
+            return evaluation_log_fn(
                 engine,
-                train_evaluator=self._train_evaluator,
-                val_evaluator=self._val_evaluator,
+                train_evaluator=self.train_evaluator,
+                val_evaluator=self.val_evaluator,
                 train_loader=train_loader,
-                val_loader=val_loader
+                val_loader=val_loader,
             )
 
-        self.engine.add_event_handler(
-            Events.EPOCH_COMPLETED, eval_handler_fn_wrapper)
+        self.engine.add_event_handler(Events.EPOCH_COMPLETED, evaluation_log_fn_wrapper)
+
+    def default_loss_fn(self):
+        raise NotImplementedError(
+            "get_loss_fn method must be implemented in subclass or provided via config"
+        )
 
     def get_loss_fn(self):
-        return None
+        loss_fn_cfg = self.cfg.get("loss_fn")
+        if loss_fn_cfg is not None and loss_fn_cfg.get("path") is not None:
+            loss_fn = parse_function_from_string(loss_fn_cfg.get("path"))(
+                **loss_fn_cfg.get("kargs", {})
+            )
+            return loss_fn
+        else:
+            return self.default_loss_fn()
 
     def attach_handlers(self):
         pass
@@ -136,78 +206,33 @@ class BaseTrainer:
     def run(self, train_loader, val_loader=None):
         """Run training with optional validation."""
         # Attach evaluation handler if configured
-        if self.cfg.get('evaluation', {}).get('enabled', False) and self._train_evaluator is None and self._val_evaluator is None:
-            self._train_evaluator, self._val_evaluator = self.create_evaluators()
-            print("Created evaluators with metrics:",
-                  self._train_evaluator.state.metrics if self._train_evaluator else None)
-            self.attach_evaluation_handler(self.cfg.get(
-                'evaluation'), train_loader, val_loader)
+        if (
+            self.cfg.get("trainer", {}).get("evaluation", False)
+            and self.train_evaluator is None
+            and self.val_evaluator is None
+        ):
+            self.train_evaluator, self.val_evaluator = self.create_evaluators()
+            print(
+                "Created evaluators with metrics:",
+                self.train_evaluator.state.metrics if self.train_evaluator else None,
+            )
+            self.attach_evaluation_handler(
+                self.cfg.get("trainer", {}), train_loader, val_loader
+            )
 
-        trainer_cfg = self.cfg.get('trainer', {})
-        run_args = trainer_cfg.get('run_args', {'max_epochs': 10})
-        self.engine.run(train_loader, **run_args)
+        trainer_cfg = self.cfg.get("trainer", {})
+        run_kargs = trainer_cfg.get("run_kargs", {"max_epochs": 10})
+        self.engine.run(train_loader, **run_kargs)
 
     @staticmethod
-    def log_evaluation(engine, train_evaluator, val_evaluator=None, train_loader=None, val_loader=None):
-        train_evaluator.run(train_loader)
-        train_metrics = train_evaluator.state.metrics
-
-        train_str = f"Training Results - Epoch: {engine.state.epoch}"
-        for name, value in train_metrics.items():
-            train_str += f" {name}: {value:.4f}"
-        print(train_str)
-
-        # Run val evaluator if provided
-        if val_loader is not None and val_evaluator is not None:
-            val_evaluator.run(val_loader)
-            val_metrics = val_evaluator.state.metrics
-
-            val_str = f"Validation Results - Epoch: {engine.state.epoch}"
-            for name, value in val_metrics.items():
-                val_str += f" {name}: {value:.4f}"
-            print(val_str)
-
-
-class PretrainTrainer(BaseTrainer):
-
-    def get_train_step(self):
-        if self.cfg.get('train_step') is not None and self.cfg.get('train_step').get('path') is not None:
-            return parse_function_from_string(self.cfg.get('train_step').get('path'))
-        return self.train_step
-
-    def get_metrics(self):
-        """Metrics for training engine (attached during training iterations)."""
-        if self.cfg.get('metrics') is not None and self.cfg.get('metrics').get('path') is not None:
-            metrics = parse_function_from_string(
-                self.cfg.get('metrics').get('path'))()
-            return metrics
-        return None
-
-    def get_eval_metrics(self):
-        """Metrics for evaluation engines (used at epoch end)."""
-        if self.cfg.get('metrics') is not None and self.cfg.get('metrics').get('path') is not None:
-            metrics = parse_function_from_string(
-                self.cfg.get('metrics').get('path'))()
-            return metrics
-        return None
-
-    def get_loss_fn(self):
-        loss_fn_cfg = self.cfg.get('loss_fn')
-        if loss_fn_cfg is not None and loss_fn_cfg.get('path') is not None:
-            loss_fn = parse_function_from_string(loss_fn_cfg.get('path'))()
-            return loss_fn
-        raise NotImplementedError("Loss function not defined in config")
-
-    def build_optimizer(self):
-        if self.cfg.get('optimizer') is not None and self.cfg.get('optimizer').get('path') is not None:
-            optimizer = parse_function_from_string(
-                self.cfg.get('optimizer').get('path'))
-            return optimizer(self.model.parameters(), **self.cfg.get('optimizer').get('args', {}))
-        return super().build_optimizer()
-
-    def build_scheduler(self):
-        if self.cfg.get('scheduler') is not None and self.cfg.get('scheduler').get('path') is not None:
-            scheduler = parse_function_from_string(
-                self.cfg.get('scheduler').get('path'))
-            return scheduler(self.optimizer, **self.cfg.get('scheduler').get('args', {}))
-        return super().build_scheduler()
+    def default_evaluation_log_fn(
+        engine,
+        train_evaluator,
+        val_evaluator=None,
+        train_loader=None,
+        val_loader=None,
+    ):
+        """Default evaluation logging function, can be overridden or provided via config."""
+        raise NotImplementedError(
+            "default_evaluation_log_fn method must be implemented in subclass or provided via config"
+        )

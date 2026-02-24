@@ -1,6 +1,6 @@
 dataset:
-  size: 10000
-  val_size: 1000
+  size: 1000
+  val_size: 100
   min: 5
   max: 100
   fixed_length: null
@@ -9,37 +9,39 @@ dataset:
   shuffle: true
 
 model:
-  num_layers: 2
-  embed_dim: 128
-  intermediate: 512
-  heads: 4
+  num_layers: 1
+  embed_dim: 16
+  intermediate: 32
+  heads: 1
 
 optimizer:
   path: torch.optim.Adam
-  args:
+  kargs:
     lr: 1.0e-3
 
 scheduler:
   path: torch.optim.lr_scheduler.CosineAnnealingLR
   event: ITERATION_COMPLETED
-  handler_args: {}
-  args:
+  handler_kargs: {}
+  kargs:
     T_max: 1570
     eta_min: 1.0e-6
 
 loss_fn:
-  path: helper.get_loss_fn
+  path: train.get_loss_fn
+  kargs:
+    pad_idx: 0
 
 metrics:
-  path: helper.get_metrics
+  path: train.get_metrics
 
 trainer:
   device: cuda
-  run_args:
+  eval_step: train.eval_step
+  train_step: train.train_step
+  evaluation: true
+  run_kargs:
     max_epochs: 10
-
-evaluation:
-  enabled: true
 
 handlers:
   log_every: 100

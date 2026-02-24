@@ -4,7 +4,7 @@ import yaml
 from dataset import ReverseStringDataset, create_dataloader
 import helper
 from model import ReverseStringModel
-from trainer import PretrainTrainer
+from trainer import BaseTrainer
 import torch
 
 
@@ -76,14 +76,11 @@ def main():
     print(f"Model: {model}")
     print(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-    # Setup training components
-    pad_idx = dataset.char_to_idx.get("<PAD>")
-    helper.set_pad_idx(pad_idx)
 
-    trainer = PretrainTrainer(model=model, device=device, cfg=config)
+    trainer = BaseTrainer(model=model, device=device, cfg=config)
     train_evaluator, val_evaluator = trainer.create_evaluators()
-    trainer._train_evaluator = train_evaluator
-    trainer._val_evaluator = val_evaluator
+    trainer.train_evaluator = train_evaluator
+    trainer.val_evaluator = val_evaluator
 
     handlers = helper.attach_handlers(
         trainer=trainer,

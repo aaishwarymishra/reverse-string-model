@@ -1,3 +1,4 @@
+import handler
 import argparse
 import yaml
 
@@ -82,7 +83,7 @@ def main():
     trainer.train_evaluator = train_evaluator
     trainer.val_evaluator = val_evaluator
 
-    handlers = helper.attach_handlers(
+    handlers = handler.attach_handlers(
         trainer=trainer,
         train_evaluator=train_evaluator,
         val_evaluator=val_evaluator,

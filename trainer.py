@@ -30,8 +30,8 @@ class BaseTrainer:
         self.engine = Engine(self.train_step)
         self.loss_fn = self.get_loss_fn()
 
-        self.train_evaluator = None
-        self.val_evaluator = None
+        if self.cfg.get("trainer", {}).get("evaluation", False):
+            self.train_evaluator, self.val_evaluator = self.create_evaluators()
 
         self.attach_scheduler()
         self.attach_handlers()
@@ -50,10 +50,10 @@ class BaseTrainer:
 
             return train_step_wrapper
         else:
-            return self.default_train_step()
+            return self.default_train_step
 
-    def default_train_step(self) -> Callable:
-        """Returns the default training step function."""
+    def default_train_step(self):
+        """Default training step function."""
         raise NotImplementedError(
             "train_step method must be implemented in subclass or provided via config"
         )
@@ -123,7 +123,7 @@ class BaseTrainer:
         return self.default_metrics()
 
     def default_eval_step(self):
-        """Returns the default evaluation step function."""
+        """The default evaluation step function."""
         raise NotImplementedError(
             "eval_step method must be implemented in subclass or provided via config"
         )
@@ -140,7 +140,7 @@ class BaseTrainer:
 
             return eval_step_wrapper
         else:
-            return self.default_eval_step()
+            return self.default_eval_step
 
     def create_evaluators(self) -> tuple[Engine, Engine] | tuple[None, None]:
         """Create train and validation evaluators with metrics."""
@@ -205,21 +205,6 @@ class BaseTrainer:
 
     def run(self, train_loader, val_loader=None):
         """Run training with optional validation."""
-        # Attach evaluation handler if configured
-        if (
-            self.cfg.get("trainer", {}).get("evaluation", False)
-            and self.train_evaluator is None
-            and self.val_evaluator is None
-        ):
-            self.train_evaluator, self.val_evaluator = self.create_evaluators()
-            print(
-                "Created evaluators with metrics:",
-                self.train_evaluator.state.metrics if self.train_evaluator else None,
-            )
-            self.attach_evaluation_handler(
-                self.cfg.get("trainer", {}), train_loader, val_loader
-            )
-
         trainer_cfg = self.cfg.get("trainer", {})
         run_kargs = trainer_cfg.get("run_kargs", {"max_epochs": 10})
         self.engine.run(train_loader, **run_kargs)

@@ -1,0 +1,98 @@
+dataset:
+  size: 1000
+  val_size: 100
+  min: 5
+  max: 100
+  fixed_length: null
+  batch_size: 64
+  train_split: 0.8
+  shuffle: true
+
+model:
+  num_layers: 1
+  embed_dim: 16
+  intermediate: 32
+  heads: 1
+
+optimizer:
+  path: torch.optim.Adam
+  kargs:
+    lr: 1.0e-3
+
+scheduler:
+  path: torch.optim.lr_scheduler.CosineAnnealingLR
+  event: ITERATION_COMPLETED
+  handler_kargs: {}
+  kargs:
+    T_max: 1570
+    eta_min: 1.0e-6
+
+loss_fn:
+  path: train.get_loss_fn
+  kargs:
+    pad_idx: 0
+
+metrics:
+  path: train.get_metrics
+  kargs:
+    pad_idx: 0
+
+trainer:
+  device: cuda
+  eval_step: train.eval_step
+  train_step: train.train_step
+  evaluation: true
+  run_kargs:
+    max_epochs: 10
+
+handlers:
+  path: handler.attach_handlers
+  kargs:
+    log_every: 100
+    log_metrics: true
+    checkpoints:
+      best:
+        enabled: true
+        target: val_evaluator
+        event: COMPLETED
+        dirname: "checkpoint"
+        n_saved: 2
+        filename_prefix: "best"
+        score_function: "lambda engine: engine.state.metrics['accuracy']"
+        score_name: "accuracy"
+        global_step_transform: "lambda engine, event: engine.state.epoch"
+        to_save: ["model", "optimizer", "scheduler"]
+      latest:
+        enabled: true
+        target: trainer
+        event: EPOCH_COMPLETED
+        dirname: "checkpoint"
+        n_saved: 1
+        filename_prefix: "latest"
+        global_step_transform: "lambda engine, event: engine.state.epoch"
+        to_save: ["model"]
+      periodic:
+        enabled: true
+        target: trainer
+        event:
+          name: EPOCH_COMPLETED
+          every: 5
+        dirname: "checkpoint"
+        n_saved: 3
+        filename_prefix: "periodic"
+        global_step_transform: "lambda engine, event: engine.state.epoch"
+        to_save: ["model"]
+    early_stopping:
+      enabled: true
+      target: val_evaluator
+      event: COMPLETED
+      patience: 3
+      score_function: "lambda engine: -engine.state.metrics['loss']"
+      min_delta: 0.001
+    tensorboard:
+      enabled: true
+      log_dir: "./tb-logs"
+      batch_loss_tag: "training"
+      metric_names: ["accuracy", "loss"]
+      global_step_transform: "lambda engine, event: engine.state.iteration"
+      log_optimizer_params: true

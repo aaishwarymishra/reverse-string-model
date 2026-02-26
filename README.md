@@ -74,15 +74,14 @@ trainer:
   eval_step: train.eval_step
 ```
 
-### 2) Handlers 
+### 2) Handlers
 
 Handlers are configured via:
 
 ```yaml
 handlers:
   path: handler.attach_handlers
-  kargs:
-    ...
+  kargs: ...
 ```
 
 `BaseTrainer` calls `handlers.path` with `trainer` as the first argument and `handlers.kargs` as keyword arguments.

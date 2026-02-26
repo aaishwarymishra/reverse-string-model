@@ -1,88 +1,124 @@
 # reverse-string-model
 
-A PyTorch-based transformer model that learns to reverse strings using attention mechanisms.
+Train a decoder-only Transformer to reverse randomly generated strings using a fully YAML-driven training pipeline.
 
-## Prerequisites
+## Highlights
 
-- [uv](https://github.com/astral-sh/uv) - Fast Python package installer and resolver
-- Python 3.12 or higher
+- Config-first training (`config.yaml`) for dataset, model, optimizer, scheduler, loss, metrics, trainer, and handlers.
+- Trainer-centric handler system: custom handlers receive the `trainer` object and can access model, loaders, evaluators, optimizer, scheduler, and engine.
+- Ignite-based training loop with optional evaluation, checkpointing, early stopping, and TensorBoard logging.
 
-## Installation
+## Project structure
 
-1. Install `uv` if you haven't already:
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+```text
+.
+├── config.yaml         # Full training/eval/handler configuration
+├── dataset.py          # Synthetic reverse-string dataset + dataloader utilities
+├── handler.py          # Custom Ignite handlers (checkpoints, early stopping, TB, logging)
+├── main.py             # Entry point: load config, build objects, run training
+├── model.py            # Decoder-only Transformer for sequence generation
+├── train.py            # Train/eval step functions, loss and metric factories
+├── trainer.py          # BaseTrainer with dynamic training loop and handler integration
 ```
 
-2. Clone the repository:
-```bash
-git clone https://github.com/aaishwarymishra/reverse-string-model.git
-cd reverse-string-model
-```
+## Requirements
 
-3. Install dependencies using `uv`:
+- Python `>=3.12`
+- [uv](https://github.com/astral-sh/uv) (recommended)
+
+Install:
+
 ```bash
 uv sync
 ```
 
-## Running the Script
+## Run training
 
-### Basic Usage
+Use default config:
 
-Run the training script with default parameters:
 ```bash
 uv run python main.py
 ```
 
-### Custom Configuration
-
-You can customize the training by passing command-line arguments:
+Use a custom config file:
 
 ```bash
-uv run python main.py --batch_size 64 --num_epochs 20 --learning_rate 0.001
+uv run python main.py --config path/to/config.yaml
 ```
 
-### Available Arguments
-
-- `--batch_size`: Batch size for training (default: 64)
-- `--num_epochs`: Number of training epochs (default: 10)
-- `--learning_rate`: Learning rate for the optimizer (default: 1e-3)
-- `--max_length`: Maximum length of input strings (default: 100)
-- `--fixed_length`: Fixed length for input strings (default: 100)
-- `--scheduler`: Enable learning rate scheduler (flag)
-- `--num_layers`: Number of transformer layers (default: 2)
-- `--embed_dim`: Embedding dimension (default: 128)
-- `--intermediate`: Intermediate dimension for feedforward network (default: 512)
-- `--heads`: Number of attention heads (default: 4)
-- `--train_size`: Number of training samples (default: 10000)
-- `--val_size`: Number of validation samples (default: 1000)
-- `--device`: Device to train on - 'cpu' or 'cuda' (default: cuda)
-
-### Example with Custom Parameters
+Override device from CLI:
 
 ```bash
-uv run python main.py \
-  --batch_size 128 \
-  --num_epochs 15 \
-  --learning_rate 0.0005 \
-  --num_layers 4 \
-  --embed_dim 256 \
-  --heads 8 \
-  --device cuda \
-  --scheduler
+uv run python main.py --device cpu
 ```
 
-## Project Structure
+If `trainer.device` is `cuda` and CUDA is unavailable, training automatically falls back to CPU.
 
-- `main.py` - Main training script and configuration
-- `model.py` - Transformer model implementation
-- `dataset.py` - Dataset generation and data loading
-- `trainer.py` - Training loop and validation logic
-- `pyproject.toml` - Project dependencies and metadata
+## Configuration guide
 
-## Dependencies
+All behavior is controlled by `config.yaml`.
 
-- PyTorch
-- pytorch-ignite (>=0.5.3)
-- numpy (>=2.4.2)
-- pydantic (>=2.12.5)
+### 1) Core sections
+
+- `dataset`: synthetic data generation and dataloader split/batch settings.
+- `model`: Transformer dimensions (`num_layers`, `embed_dim`, `intermediate`, `heads`).
+- `optimizer` / `scheduler`: fully dynamic from import paths.
+- `loss_fn` / `metrics`: loaded from factory function paths.
+- `trainer`: training/eval step function paths and run args.
+
+Example dynamic function path:
+
+```yaml
+trainer:
+  train_step: train.train_step
+  eval_step: train.eval_step
+```
+
+### 2) Handlers 
+
+Handlers are configured via:
+
+```yaml
+handlers:
+  path: handler.attach_handlers
+  kargs:
+    ...
+```
+
+`BaseTrainer` calls `handlers.path` with `trainer` as the first argument and `handlers.kargs` as keyword arguments.
+
+Inside `handler.attach_handlers(trainer, **config)`, you can directly access:
+
+- `trainer.engine`
+- `trainer.model`
+- `trainer.optimizer`
+- `trainer.scheduler`
+- `trainer.train_loader` / `trainer.val_loader`
+- `trainer.train_evaluator` / `trainer.val_evaluator`
+
+Current handler config supports:
+
+- Iteration loss logging (`log_every`)
+- Epoch metric logging (`log_metrics`)
+- Multi-policy checkpointing (`checkpoints`)
+- Early stopping (`early_stopping`)
+- TensorBoard output + optimizer params (`tensorboard`)
+
+## How training is wired
+
+1. `main.py` loads YAML and builds dataset/loaders/model.
+2. `BaseTrainer` builds optimizer/scheduler/loss/train step/eval step.
+3. Evaluators are created when `trainer.evaluation: true`.
+4. Custom handlers are attached via `handlers.path`.
+5. `trainer.run()` starts Ignite training.
+
+## Checkpoints and TensorBoard
+
+- Checkpoints are written to `checkpoint/` based on handler policies (`best`, `latest`, `periodic`).
+- TensorBoard logs are written to `tb-logs/`.
+
+Launch TensorBoard:
+
+```bash
+uv run tensorboard --logdir tb-logs
+```

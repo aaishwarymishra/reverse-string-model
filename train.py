@@ -34,24 +34,23 @@ def get_loss_fn(pad_idx):
     return loss_fn
 
 
-def accuracy_transform(output):
-    preds, y = output
+def get_metrics(loss_fn, pad_idx=0):
+    def accuracy_transform(output):
+        preds, y = output
 
-    preds_flat = preds.reshape(-1, preds.size(-1))
-    y_flat = y.reshape(-1)
+        preds_flat = preds.reshape(-1, preds.size(-1))
+        y_flat = y.reshape(-1)
 
-    mask = y_flat != 0
+        mask = y_flat != pad_idx
 
-    preds_masked = preds_flat[mask]
-    y_masked = y_flat[mask]
+        preds_masked = preds_flat[mask]
+        y_masked = y_flat[mask]
 
-    return preds_masked, y_masked
+        return preds_masked, y_masked
 
-
-def get_metrics(loss):
     return {
         "accuracy": metrics.Accuracy(output_transform=accuracy_transform),
-        "loss": metrics.Loss(loss),
+        "loss": metrics.Loss(loss_fn),
     }
 
     def default_log_evaluation(

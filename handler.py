@@ -1,18 +1,10 @@
-from ignite import metrics
 from ignite.engine import Events
 from ignite.handlers import EarlyStopping, ModelCheckpoint
-from ignite.contrib.handlers import TensorboardLogger
-from ignite.contrib.handlers.tensorboard_logger import OptimizerParamsHandler
+from ignite.handlers.tensorboard_logger import (
+    TensorboardLogger,
+    OptimizerParamsHandler,
+)
 import importlib
-import torch
-
-
-
-def get_metrics():
-    return {
-        "accuracy": metrics.Accuracy(output_transform=accuracy_transform),
-        "loss": metrics.Loss(loss_fn),
-    }
 
 
 def _parse_event(event_cfg):
@@ -48,17 +40,25 @@ def _resolve_to_save(keys, context):
     return {key: context[key] for key in keys if context.get(key) is not None}
 
 
-
-def attach_handlers(
-    trainer,
-    train_evaluator,
-    val_evaluator,
-    train_loader,
-    val_loader,
-    config,
-    context,
-):
+def attach_handlers(trainer, **config):
     handlers = {}
+
+    if not config:
+        handlers_cfg = trainer.cfg.get("handlers", {})
+        config = dict(handlers_cfg.get("kargs", {}))
+        for key, value in handlers_cfg.items():
+            if key not in {"path", "kargs"} and key not in config:
+                config[key] = value
+
+    train_evaluator = getattr(trainer, "train_evaluator", None)
+    val_evaluator = getattr(trainer, "val_evaluator", None)
+    train_loader = getattr(trainer, "train_loader", None)
+    val_loader = getattr(trainer, "val_loader", None)
+    context = {
+        "model": getattr(trainer, "model", None),
+        "optimizer": getattr(trainer, "optimizer", None),
+        "scheduler": getattr(trainer, "scheduler", None),
+    }
 
     log_every = config.get("log_every")
     if log_every:
@@ -75,6 +75,8 @@ def attach_handlers(
     if config.get("log_metrics", True) and train_evaluator is not None:
 
         def _log_metrics(engine):
+            if train_loader is None:
+                return
             train_evaluator.run(train_loader)
             train_metrics = train_evaluator.state.metrics
             train_str = f"Training Results - Epoch: {engine.state.epoch}"
@@ -119,9 +121,12 @@ def attach_handlers(
 
     early_stopping_cfg = config.get("early_stopping", {})
     if early_stopping_cfg.get("enabled", False):
+        score_function = _parse_function(early_stopping_cfg.get("score_function"))
+        if score_function is None:
+            raise ValueError("early_stopping.score_function must be provided")
         early_stopping = EarlyStopping(
             patience=int(early_stopping_cfg.get("patience", 3)),
-            score_function=_parse_function(early_stopping_cfg.get("score_function")),
+            score_function=score_function,
             trainer=trainer.engine,
             min_delta=float(early_stopping_cfg.get("min_delta", 0.0)),
         )
@@ -163,10 +168,11 @@ def attach_handlers(
                 global_step_transform=global_step_transform,
             )
 
-        if tb_cfg.get("log_optimizer_params", True) and context.get("optimizer"):
+        optimizer = context.get("optimizer")
+        if tb_cfg.get("log_optimizer_params", True) and optimizer is not None:
             tb_logger.attach(
                 trainer.engine,
-                log_handler=OptimizerParamsHandler(context["optimizer"]),
+                log_handler=OptimizerParamsHandler(optimizer),
                 event_name=Events.ITERATION_STARTED,
             )
         handlers["tensorboard"] = tb_logger

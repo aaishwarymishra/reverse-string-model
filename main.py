@@ -1,9 +1,7 @@
-import handler
 import argparse
 import yaml
 
 from dataset import ReverseStringDataset, create_dataloader
-import helper
 from model import ReverseStringModel
 from trainer import BaseTrainer
 import torch
@@ -78,30 +76,19 @@ def main():
     print(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
 
 
-    trainer = BaseTrainer(model=model, device=device, cfg=config)
-    train_evaluator, val_evaluator = trainer.create_evaluators()
-    trainer.train_evaluator = train_evaluator
-    trainer.val_evaluator = val_evaluator
-
-    handlers = handler.attach_handlers(
-        trainer=trainer,
-        train_evaluator=train_evaluator,
-        val_evaluator=val_evaluator,
+    trainer = BaseTrainer(
+        model=model,
+        device=device,
+        cfg=config,
         train_loader=train_loader,
         val_loader=val_loader,
-        config=config.get("handlers", {}),
-        context={
-            "model": model,
-            "optimizer": trainer.optimizer,
-            "scheduler": trainer.scheduler,
-        },
     )
 
     # Start training
-    trainer.run(train_loader, val_loader)
+    trainer.run()
 
     # Clean up handlers
-    tb_logger = handlers.get("tensorboard")
+    tb_logger = trainer.handlers.get("tensorboard")
     if tb_logger is not None:
         tb_logger.close()
 

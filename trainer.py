@@ -19,10 +19,14 @@ def parse_function_from_string(val: str):
 
 
 class BaseTrainer:
-    def __init__(self, model, device, cfg):
+    def __init__(self, model, cfg, train_loader, val_loader=None, device="cpu"):
         self.model = model
         self.device = device
         self.cfg: dict = cfg
+        self.train_loader = train_loader
+        self.val_loader = val_loader
+        self.train_evaluator = None
+        self.val_evaluator = None
         self.optimizer = self.build_optimizer()
         self.scheduler = self.build_scheduler()
         self.train_step = self.get_train_step()
@@ -32,9 +36,8 @@ class BaseTrainer:
 
         if self.cfg.get("trainer", {}).get("evaluation", False):
             self.train_evaluator, self.val_evaluator = self.create_evaluators()
-
+        self.handlers = self.attach_handlers()
         self.attach_scheduler()
-        self.attach_handlers()
 
     def get_train_step(self) -> Callable:
         """Returns the training step function, either from config or default."""
@@ -164,27 +167,6 @@ class BaseTrainer:
 
         return train_evaluator, val_evaluator
 
-    def attach_evaluation_handler(self, config, train_loader, val_loader=None):
-        """Attach evaluation handler with closure over dataloaders."""
-        path = config.get("path")
-
-        if path is not None:
-            evaluation_log_fn = parse_function_from_string(path)
-        else:
-            evaluation_log_fn = self.default_evaluation_log_fn
-
-        # Wrapper to inject evaluators and dataloaders via closure
-        def evaluation_log_fn_wrapper(engine):
-            return evaluation_log_fn(
-                engine,
-                train_evaluator=self.train_evaluator,
-                val_evaluator=self.val_evaluator,
-                train_loader=train_loader,
-                val_loader=val_loader,
-            )
-
-        self.engine.add_event_handler(Events.EPOCH_COMPLETED, evaluation_log_fn_wrapper)
-
     def default_loss_fn(self):
         raise NotImplementedError(
             "get_loss_fn method must be implemented in subclass or provided via config"
@@ -199,12 +181,30 @@ class BaseTrainer:
             return loss_fn
         else:
             return self.default_loss_fn()
+        
+    def default_handlers(self):
+        """Default handlers to attach, can be overridden or provided via config."""
+        return {}
 
     def attach_handlers(self):
-        pass
+        handlers = self.default_handlers()
+        if self.cfg.get("handlers"):
+            handlers_cfg = self.cfg.get("handlers", {})
+            path = handlers_cfg.get("path")
+            if path is not None:
+                handler_args = dict(handlers_cfg.get("kargs", {}))
+                for key, value in handlers_cfg.items():
+                    if key not in {"path", "kargs"} and key not in handler_args:
+                        handler_args[key] = value
+                custom_handlers = parse_function_from_string(path)(self, **handler_args)
+                if custom_handlers:
+                    handlers.update(custom_handlers)
+        return handlers
 
-    def run(self, train_loader, val_loader=None):
+    def run(self, train_loader=None, val_loader=None):
         """Run training with optional validation."""
+        train_loader = train_loader or self.train_loader
+        val_loader = val_loader or self.val_loader
         trainer_cfg = self.cfg.get("trainer", {})
         run_kargs = trainer_cfg.get("run_kargs", {"max_epochs": 10})
         self.engine.run(train_loader, **run_kargs)

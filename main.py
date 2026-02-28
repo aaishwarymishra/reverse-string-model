@@ -1,8 +1,7 @@
-from torch.utils import data
 import argparse
 import yaml
 
-from dataset import ReverseStringDataset, create_dataloader
+from dataset import create_dataloader
 from trainer import BaseTrainer, parse_function_from_string
 import torch
 

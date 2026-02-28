@@ -1,13 +1,3 @@
-dataset:
-  size: 1000
-  val_size: 100
-  min: 5
-  max: 100
-  fixed_length: null
-  batch_size: 64
-  train_split: 0.8
-  shuffle: true
-
 model:
   path: model.ReverseStringModel
   kargs:
@@ -21,7 +11,6 @@ dataset:
   path: dataset.ReverseStringDataset
   kargs:
     size: 1000
-    fixed_length: false
     min: 5
     max: 100
   dataloader_kargs:

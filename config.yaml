@@ -9,10 +9,25 @@ dataset:
   shuffle: true
 
 model:
-  num_layers: 1
-  embed_dim: 16
-  intermediate: 32
-  heads: 1
+  path: model.ReverseStringModel
+  kargs:
+    num_layers: 1
+    embed_dim: 16
+    intermediate: 32
+    heads: 1
+    vocab_size: 66
+
+dataset:
+  path: dataset.ReverseStringDataset
+  kargs:
+    size: 1000
+    fixed_length: false
+    min: 5
+    max: 100
+  dataloader_kargs:
+    batch_size: 64
+    shuffle: true
+    train_split: 0.8
 
 optimizer:
   path: torch.optim.Adam

@@ -1,9 +1,9 @@
+from torch.utils import data
 import argparse
 import yaml
 
 from dataset import ReverseStringDataset, create_dataloader
-from model import ReverseStringModel
-from trainer import BaseTrainer
+from trainer import BaseTrainer, parse_function_from_string
 import torch
 
 
@@ -14,8 +14,7 @@ def load_yaml_config(config_path: str) -> dict:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Train a reverse string model.")
+    parser = argparse.ArgumentParser(description="Train a reverse string model.")
     parser.add_argument(
         "--config",
         type=str,
@@ -47,34 +46,23 @@ def main():
 
     # Create datasets
     dataset_config = config["dataset"]
-    dataset = ReverseStringDataset(
-        min=dataset_config.get("min", 5),
-        max=dataset_config.get("max", 100),
-        size=dataset_config.get("size", 10000),
-        fixed_length=dataset_config.get("fixed_length"),
-    )
+    dataset = parse_function_from_string(
+        dataset_config.get("path", "dataset.ReverseStringDataset")
+    )(**dataset_config.get("kargs", {}))
 
     train_loader, val_loader = create_dataloader(
         dataset=dataset,
-        batch_size=dataset_config.get("batch_size", 64),
-        shuffle=dataset_config.get("shuffle", True),
-        train_split=dataset_config.get("train_split", 0.8),
+        **dataset_config.get("dataloader_kargs", {"batch_size": 32, "shuffle": True}),
     )
-
     # Create model
     model_config = config.get("model", {})
-    model = ReverseStringModel(
-        num_layers=model_config.get("num_layers", 2),
-        embed_dim=model_config.get("embed_dim", 128),
-        intermediate=model_config.get("intermediate", 512),
-        heads=model_config.get("heads", 4),
-        vocab_size=len(dataset.char_to_idx),
-        pad_idx=dataset.char_to_idx.get("<PAD>"),
-    ).to(device)
+    model_path = model_config.get("path", "model.ReverseStringModel")
+    model = parse_function_from_string(model_path)(**model_config.get("kargs", {})).to(
+        device
+    )
 
     print(f"Model: {model}")
     print(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
-
 
     trainer = BaseTrainer(
         model=model,

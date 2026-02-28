@@ -6,9 +6,11 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "torch",
-    "pytorch-ignite>=0.5.3",
     "numpy>=2.4.2",
     "pydantic>=2.12.5",
     "pyaml>=26.2.1",
     "tensorboard>=2.20.0",
 ]
+
+[project.scripts]
+init-project = "init_project:main"

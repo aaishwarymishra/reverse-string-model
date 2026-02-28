@@ -52,24 +52,3 @@ def get_metrics(loss_fn, pad_idx=0):
         "accuracy": metrics.Accuracy(output_transform=accuracy_transform),
         "loss": metrics.Loss(loss_fn),
     }
-
-    def default_log_evaluation(
-        engine, train_evaluator, val_evaluator=None, train_loader=None, val_loader=None
-    ):
-        train_evaluator.run(train_loader)
-        train_metrics = train_evaluator.state.metrics
-
-        train_str = f"Training Results - Epoch: {engine.state.epoch}"
-        for name, value in train_metrics.items():
-            train_str += f" {name}: {value:.4f}"
-        print(train_str)
-
-        # Run val evaluator if provided
-        if val_loader is not None and val_evaluator is not None:
-            val_evaluator.run(val_loader)
-            val_metrics = val_evaluator.state.metrics
-
-            val_str = f"Validation Results - Epoch: {engine.state.epoch}"
-            for name, value in val_metrics.items():
-                val_str += f" {name}: {value:.4f}"
-            print(val_str)

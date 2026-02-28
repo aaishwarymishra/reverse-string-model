@@ -5,6 +5,19 @@ import torch
 import importlib
 
 
+def _parse_event(event_cfg):
+    if isinstance(event_cfg, dict):
+        name = event_cfg.get("name", "EPOCH_COMPLETED")
+        every = event_cfg.get("every")
+        event = getattr(Events, name, Events.EPOCH_COMPLETED)
+        if every is not None:
+            event = event(every=int(every))
+        return event
+    if isinstance(event_cfg, str):
+        return getattr(Events, event_cfg, Events.EPOCH_COMPLETED)
+    return Events.EPOCH_COMPLETED
+
+
 def parse_function_from_string(val: str):
     if not isinstance(val, str):
         raise TypeError(f"Expected string, got {type(val).__name__}")
@@ -181,7 +194,7 @@ class BaseTrainer:
             return loss_fn
         else:
             return self.default_loss_fn()
-        
+
     def default_handlers(self):
         """Default handlers to attach, can be overridden or provided via config."""
         return {}

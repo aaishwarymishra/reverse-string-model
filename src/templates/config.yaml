@@ -97,6 +97,6 @@ handlers:
       enabled: true
       log_dir: "./tb-logs"
       batch_loss_tag: "training"
-      metric_names: ["accuracy", "loss"]
+      metric_names: ["accuracy", "exact_match", "loss"]
       global_step_transform: "lambda engine, event: engine.state.iteration"
       log_optimizer_params: true

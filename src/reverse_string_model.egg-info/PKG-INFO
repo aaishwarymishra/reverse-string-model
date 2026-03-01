@@ -1,3 +1,16 @@
+Metadata-Version: 2.4
+Name: reverse-string-model
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: torch
+Requires-Dist: numpy>=2.4.2
+Requires-Dist: pydantic>=2.12.5
+Requires-Dist: pyaml>=26.2.1
+Requires-Dist: tensorboard>=2.20.0
+Requires-Dist: pytorch-ignite>=0.5.0
+
 # ignite-lmtt: Language Model Training Toolbox (Prototype)
 
 A prototype implementation for the PyTorch-Ignite GSoC 2026 project idea: **"Development of a toolbox for training language models"**.
@@ -7,7 +20,7 @@ This project provides a robust API to train a decoder-only Transformer to revers
 ## Highlights
 
 - **Dynamic scaffolding API:** Replicate the requested `$ ignite-lmtt init` user experience to bootstrap `main.py`, `config.yaml`, handlers, and datasets on the fly.
-- **Config-first training (`config.yaml`)** for dataset, model, optimizer, scheduler, loss, metrics, trainer, and handlers. No hardcoded behavior.
+- **Config-first training (`config.yaml`)** for dataset, model, optimizer, scheduler, loss, metrics, trainer, and handlers. No hardcoded behavior. 
 - **String-level metrics**: Extends default token-level accuracy to log absolute sequence generation matching via custom `exact_match_transform`.
 - **Structured Outputs**: Output directory parsing that cleanly scopes logs, YAML config snapshots, TensorBoard events, and `.pt` checkpoint intervals individually per run as requested.
 - **Trainer-centric handler system:** Custom handlers receive the `trainer` object and can access model, loaders, evaluators, optimizer, scheduler, and engine.

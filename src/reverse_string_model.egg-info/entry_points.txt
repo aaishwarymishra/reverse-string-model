@@ -1,0 +1,2 @@
+[console_scripts]
+ignite-lmtt = init_project:main

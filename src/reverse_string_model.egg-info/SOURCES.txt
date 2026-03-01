@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+src/reverse_string_model.egg-info/PKG-INFO
+src/reverse_string_model.egg-info/SOURCES.txt
+src/reverse_string_model.egg-info/dependency_links.txt
+src/reverse_string_model.egg-info/entry_points.txt
+src/reverse_string_model.egg-info/requires.txt
+src/reverse_string_model.egg-info/top_level.txt
+src/templates/handler.py
+src/templates/main.py
+src/templates/train.py

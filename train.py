@@ -47,8 +47,29 @@ def get_metrics(loss_fn, pad_idx=0):
         y_masked = y_flat[mask]
 
         return preds_masked, y_masked
+        
+    def exact_match_transform(output):
+        preds, y = output
+        # preds: (B, L, C), y: (B, L)
+        pred_indices = preds.argmax(dim=-1)
+        
+        # Exact match per sequence
+        mask = y != pad_idx
+        
+        # Check if all non-pad tokens match exactly
+        correct_per_token = pred_indices == y
+        # Only care about non-padding tokens matching: 
+        # For a sequence to be perfectly matched, all its meaningful tokens must match
+        # (correct_per_token | ~mask) means either true match or it's pad so we ignore
+        is_exact_match = (correct_per_token | ~mask).all(dim=-1)
+        
+        # Format for Accuracy metric: (preds, targets)
+        # We want to measure the average of `is_exact_match`. 
+        # We can simulate this by passing y_pred=is_exact_match and y=ones.
+        return is_exact_match.long(), torch.ones_like(is_exact_match, dtype=torch.long)
 
     return {
         "accuracy": metrics.Accuracy(output_transform=accuracy_transform),
+        "exact_match": metrics.Accuracy(output_transform=exact_match_transform),
         "loss": metrics.Loss(loss_fn),
     }

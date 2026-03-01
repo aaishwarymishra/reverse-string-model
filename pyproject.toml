@@ -10,7 +10,11 @@ dependencies = [
     "pydantic>=2.12.5",
     "pyaml>=26.2.1",
     "tensorboard>=2.20.0",
+    "pytorch-ignite>=0.5.0",
 ]
 
 [project.scripts]
-init-project = "init_project:main"
+ignite-lmtt = "init_project:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

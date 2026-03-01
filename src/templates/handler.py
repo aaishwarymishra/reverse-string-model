@@ -4,7 +4,8 @@ from ignite.handlers.tensorboard_logger import (
     TensorboardLogger,
     OptimizerParamsHandler,
 )
-from trainer import parse_function_from_string, _parse_event
+from src.trainer import parse_function_from_string, _parse_event
+import logging
 
 
 def _resolve_to_save(keys, context):
@@ -38,7 +39,7 @@ def attach_handlers(trainer, **config):
         log_event = Events.ITERATION_COMPLETED(every=int(log_every))
 
         def _log_loss(engine):
-            print(
+            logging.info(
                 f"Epoch[{engine.state.epoch}] Iter[{engine.state.iteration}] "
                 f"Loss: {engine.state.output:.4f}"
             )
@@ -55,7 +56,7 @@ def attach_handlers(trainer, **config):
             train_str = f"Training Results - Epoch: {engine.state.epoch}"
             for name, value in train_metrics.items():
                 train_str += f" {name}: {value:.4f}"
-            print(train_str)
+            logging.info(train_str)
 
             if val_loader is not None and val_evaluator is not None:
                 val_evaluator.run(val_loader)
@@ -63,7 +64,7 @@ def attach_handlers(trainer, **config):
                 val_str = f"Validation Results - Epoch: {engine.state.epoch}"
                 for name, value in val_metrics.items():
                     val_str += f" {name}: {value:.4f}"
-                print(val_str)
+                logging.info(val_str)
 
         trainer.engine.add_event_handler(Events.EPOCH_COMPLETED, _log_metrics)
 
@@ -75,15 +76,20 @@ def attach_handlers(trainer, **config):
         to_save = _resolve_to_save(ckpt_cfg.get("to_save", ["model"]), context)
         if not to_save:
             continue
+        score_func_str = ckpt_cfg.get("score_function")
+        global_step_str = ckpt_cfg.get("global_step_transform")
+
         checkpoint = ModelCheckpoint(
             ckpt_cfg.get("dirname", "checkpoint"),
             n_saved=int(ckpt_cfg.get("n_saved", 1)),
             filename_prefix=ckpt_cfg.get("filename_prefix", name),
-            score_function=parse_function_from_string(ckpt_cfg.get("score_function")),
+            score_function=parse_function_from_string(score_func_str)
+            if score_func_str
+            else None,
             score_name=ckpt_cfg.get("score_name"),
-            global_step_transform=parse_function_from_string(
-                ckpt_cfg.get("global_step_transform")
-            ),
+            global_step_transform=parse_function_from_string(global_step_str)
+            if global_step_str
+            else None,
         )
         target = ckpt_cfg.get("target", "trainer")
         if target == "val_evaluator" and val_evaluator is not None:
@@ -94,7 +100,9 @@ def attach_handlers(trainer, **config):
 
     early_stopping_cfg = config.get("early_stopping", {})
     if early_stopping_cfg.get("enabled", False):
-        score_function = parse_function_from_string(early_stopping_cfg.get("score_function"))
+        score_function = parse_function_from_string(
+            early_stopping_cfg.get("score_function")
+        )
         if score_function is None:
             raise ValueError("early_stopping.score_function must be provided")
         early_stopping = EarlyStopping(
@@ -122,7 +130,12 @@ def attach_handlers(trainer, **config):
         )
 
         metric_names = tb_cfg.get("metric_names", ["accuracy", "loss"])
-        global_step_transform = parse_function_from_string(tb_cfg.get("global_step_transform"))
+        global_step_str_tb = tb_cfg.get("global_step_transform")
+        global_step_transform = (
+            parse_function_from_string(global_step_str_tb)
+            if global_step_str_tb
+            else None
+        )
 
         if train_evaluator is not None:
             tb_logger.attach_output_handler(

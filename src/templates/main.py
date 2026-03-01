@@ -62,19 +62,7 @@ def main():
         # Copy configuration
         shutil.copy(config_path, output_dir / f"{config_name}.yaml")
 
-        # Setup logging
-        import logging
-
-        logging.basicConfig(
-            filename=str(output_dir / "output.log"),
-            level=logging.INFO,
-            format="%(asctime)s | %(levelname)s | %(message)s",
-        )
-        # Also log to stdout
-        console = logging.StreamHandler()
-        console.setLevel(logging.INFO)
-        logging.getLogger().addHandler(console)
-        logging.info(f"Output directory initialized at {output_dir}")
+        print(f"Output directory initialized at {output_dir}")
 
         # Override paths in handlers to point to output_dir
         if "handlers" in config and "kargs" in config["handlers"]:
@@ -94,9 +82,7 @@ def main():
 
     device = config["trainer"].get("device", "cpu")
     if device == "cuda" and not torch.cuda.is_available():
-        import logging
-
-        logging.getLogger().warning("CUDA is not available. Falling back to CPU.")
+        print("WARNING: CUDA is not available. Falling back to CPU.")
         device = "cpu"
 
     # Create datasets
@@ -116,10 +102,8 @@ def main():
         device
     )
 
-    import logging
-
-    logging.info(f"Model:\n{model}")
-    logging.info(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
+    print(f"Model:\n{model}")
+    print(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
 
     trainer = BaseTrainer(
         model=model,

@@ -5,7 +5,6 @@ from ignite.handlers.tensorboard_logger import (
     OptimizerParamsHandler,
 )
 from src.trainer import parse_function_from_string, _parse_event
-import logging
 
 
 def _resolve_to_save(keys, context):
@@ -39,7 +38,7 @@ def attach_handlers(trainer, **config):
         log_event = Events.ITERATION_COMPLETED(every=int(log_every))
 
         def _log_loss(engine):
-            logging.info(
+            print(
                 f"Epoch[{engine.state.epoch}] Iter[{engine.state.iteration}] "
                 f"Loss: {engine.state.output:.4f}"
             )
@@ -56,7 +55,7 @@ def attach_handlers(trainer, **config):
             train_str = f"Training Results - Epoch: {engine.state.epoch}"
             for name, value in train_metrics.items():
                 train_str += f" {name}: {value:.4f}"
-            logging.info(train_str)
+            print(train_str)
 
             if val_loader is not None and val_evaluator is not None:
                 val_evaluator.run(val_loader)
@@ -64,7 +63,7 @@ def attach_handlers(trainer, **config):
                 val_str = f"Validation Results - Epoch: {engine.state.epoch}"
                 for name, value in val_metrics.items():
                     val_str += f" {name}: {value:.4f}"
-                logging.info(val_str)
+                print(val_str)
 
         trainer.engine.add_event_handler(Events.EPOCH_COMPLETED, _log_metrics)
 
